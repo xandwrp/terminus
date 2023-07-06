@@ -1,0 +1,8 @@
+"UnlitGeneric"
+{
+    "$basetexture"	"giygas\npc_giygas_killicon"
+    "$translucent" "1"
+    "$ignorez" "1"
+    "$vertexcolor" "1"
+    "$vertexalpha" "1"
+} 
