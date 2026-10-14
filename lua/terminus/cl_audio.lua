@@ -21,6 +21,7 @@ local HEART = "player/heartbeat1.wav"
 local HEART_RANGE = 1200
 local HEART_PITCH = { 85, 140 }
 local HEART_VOLUME = { 0.2, 1 }
+local FEINT_FADE = 5
 local HEARTBEAT = { [STATE.stalk] = true, [STATE.hide] = true, [STATE.feint] = true }
 
 local function Length(path)
@@ -58,7 +59,7 @@ local bots = {}
 local function Voice(ent)
 	local v = bots[ent]
 	if v then return v end
-	v = { chase = NewLoop(ent, CHASE, CHASE_LEVEL, CHASE_FADE), close = {}, closeEnds = 0, state = ent:GetState() }
+	v = { chase = NewLoop(ent, CHASE, CHASE_LEVEL, CHASE_FADE), close = {}, closeEnds = 0, state = ent:GetState(), since = CurTime() }
 	for i, path in ipairs(CLOSE) do
 		v.close[i] = { patch = CreateSound(ent, path), length = Length(path) }
 	end
@@ -66,12 +67,12 @@ local function Voice(ent)
 	return v
 end
 
-local function Creep(v, on, now)
+local function Creep(v, on, volume, now)
 	if on and now >= v.closeEnds then
 		local c = v.close[math.random(#v.close)]
 		c.patch:Stop()
 		c.patch:SetSoundLevel(CLOSE_LEVEL)
-		c.patch:Play()
+		c.patch:PlayEx(volume, 100)
 		v.closeEnds = now + c.length
 	elseif not on and v.closeEnds > 0 then
 		for _, c in ipairs(v.close) do c.patch:Stop() end
@@ -99,12 +100,15 @@ hook.Add("Think", "TerminusAudio", function()
 		local v = Voice(ent)
 		local state = ent:GetState()
 		v.chase:Hold(state == STATE.chase, 1, now)
-		Creep(v, CREEPING[state], now)
+		if state ~= v.state then v.since = now end
+		-- Walking off as bait, it fades out on purpose so it sounds like it's really going.
+		local fade = state == STATE.feint and math.max(0, 1 - (now - v.since) / FEINT_FADE) or 1
+		Creep(v, CREEPING[state] and fade > 0, fade, now)
 		if ent:GetTarget() == me then
 			chased = chased or state == STATE.chase
 			enraged = enraged or (state == STATE.chase and ent:GetEnraged())
 			stalked = stalked or state == STATE.stalk
-			if HEARTBEAT[state] then near = math.max(near, 1 - ent:GetPos():Distance(me:GetPos()) / HEART_RANGE) end
+			if HEARTBEAT[state] then near = math.max(near, (1 - ent:GetPos():Distance(me:GetPos()) / HEART_RANGE) * fade) end
 			if Terminus.Spotted(v.state, state) then me:EmitSound(STING, 0, 100, 1, CHAN_STATIC) end
 		end
 		v.state = state
