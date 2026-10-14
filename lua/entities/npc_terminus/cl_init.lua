@@ -19,6 +19,9 @@ local POP_TIME = 0.35
 local POP_SIZE = 0.3
 local POP_SHAKE = 8
 local FLICKER = 0.08
+local FEED_DIP = 36
+local CHEW_RATE, CHEW_DEPTH = 7, 6
+local CHEW_SHAKE = 1
 
 local tint = Color(255, 255, 255)
 
@@ -60,6 +63,10 @@ function ENT:RenderOverride()
 		tint.a = (leaving and math.random() < FLICKER) and 0 or 255
 		if state == Terminus.STATE.chase then shake = CHASE_SHAKE end
 	end
+	if state == Terminus.STATE.feed then
+		pos = pos - vector_up * (FEED_DIP + CHEW_DEPTH * math.abs(math.sin(CurTime() * CHEW_RATE)))
+		shake = shake + CHEW_SHAKE
+	end
 	local pop = 1 - (CurTime() - (self.SpottedAt or -math.huge)) / POP_TIME
 	if pop > 0 then
 		size = size * (1 + POP_SIZE * pop)
@@ -69,6 +76,11 @@ function ENT:RenderOverride()
 	render.SetMaterial(SPRITE)
 	render.DrawSprite(pos, size, size, color)
 end
+
+-- Player models take their colour from whoever's wearing them, so a body of a player needs telling.
+hook.Add("EntityNetworkedVarChanged", "TerminusBodyColor", function(ent, name, _, color)
+	if name == Terminus.COLOR_VAR and color then ent.GetPlayerColor = function() return color end end
+end)
 
 hook.Add("Think", "TerminusSpotted", function()
 	for _, ent in ipairs(ents.FindByClass("npc_terminus")) do

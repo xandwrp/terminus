@@ -2,6 +2,7 @@ AddCSLuaFile("cl_init.lua")
 AddCSLuaFile("shared.lua")
 include("shared.lua")
 include("sv_brain.lua")
+include("sv_feed.lua")
 
 local ai_disabled = GetConVar("ai_disabled")
 

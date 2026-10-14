@@ -12,7 +12,6 @@ local GIVE_UP = 3
 local STUCK_WARP = 1.5
 local CATCH_RANGE = 48
 local CATCH_HEIGHT = 72
-local CATCH_FORCE = 5000
 local SIGHT_CLOSE = 160
 local SIGHT_TOP = Vector(0, 0, 110)
 local SPRITE_RADIUS = 48
@@ -76,6 +75,7 @@ local RAGE_GRIP, TIRED_GRIP = 0.5, 0.5
 local DIRECT_RANGE, DIRECT_HEIGHT = 300, 48
 local DIRECT_LEAD = 0.35
 local STEER_TIGHT = 15
+local PREFER_PLAYERS = 0.6
 local REST_CHECK = 0.5
 local REST_NEAR = 2000
 local LINGER = 4
@@ -88,12 +88,28 @@ for i = 0, 7 do
 	AROUND[#AROUND + 1] = Vector(math.cos(a), math.sin(a), 0) * ENCLOSED_REACH
 end
 
-local function Huntable(ply)
-	return IsValid(ply) and ply:IsPlayer() and ply:Alive()
-		and not ai_ignoreplayers:GetBool()
-		and not ply:IsFlagSet(FL_NOTARGET)
-		and ply:GetMoveType() ~= MOVETYPE_NOCLIP
-		and ply:GetObserverMode() == OBS_MODE_NONE
+local function Huntable(ent)
+	if not IsValid(ent) or ent:IsFlagSet(FL_NOTARGET) or ent.TerminusMeal then return false end
+	if ent:IsPlayer() then
+		return Setting("hunt_players") ~= 0 and ent:Alive()
+			and not ai_ignoreplayers:GetBool()
+			and not ent:HasGodMode()
+			and ent:GetMoveType() ~= MOVETYPE_NOCLIP
+			and ent:GetObserverMode() == OBS_MODE_NONE
+	end
+	if ent:IsNPC() then
+		if Setting("hunt_npcs") == 0 or ent:GetMoveType() ~= MOVETYPE_STEP then return false end
+	elseif ent:IsNextBot() then
+		if Setting("hunt_nextbots") == 0 or ent:GetClass() == "npc_terminus" then return false end
+	else
+		return false
+	end
+	if ent.Dead or ent.IsDead and ent:IsDead() then return false end
+	return ent:Health() > 0 or ent:IsNextBot() and ent:GetMaxHealth() <= 0
+end
+
+local function Facing(ent)
+	return ent:IsPlayer() and ent:GetAimVector() or ent:EyeAngles():Forward()
 end
 
 local function Clear(from, to, filter)
@@ -105,7 +121,7 @@ local function OnScreen(ply, point)
 	local ang = ply:EyeAngles()
 	local depth = to:Dot(ang:Forward())
 	if depth <= 0 then return false end
-	local fov = ply:GetFOV()
+	local fov = ply:IsPlayer() and ply:GetFOV() or 0
 	local tall = math.tan(math.rad(fov > 0 and fov or 75) / 2) * 0.75
 	return math.abs(to:Dot(ang:Right())) < depth * tall * ASPECT + SPRITE_RADIUS
 		and math.abs(to:Dot(ang:Up())) < depth * tall + SPRITE_RADIUS
@@ -117,7 +133,7 @@ local function Sees(ply, pos, anyway)
 	if not anyway and eye:DistToSqr(center) > SIGHT_CLOSE * SIGHT_CLOSE and not OnScreen(ply, center) then
 		return false
 	end
-	local vehicle = ply:GetVehicle()
+	local vehicle = ply:IsPlayer() and ply:GetVehicle()
 	local filter = IsValid(vehicle) and { ply, vehicle } or ply
 	return Clear(eye, center, filter) or Clear(eye, pos + SIGHT_TOP, filter)
 end
@@ -132,7 +148,7 @@ function ENT:SeenBy(ply, pos)
 	local to = pos + EYE - ply:EyePos()
 	local dist = to:Length()
 	if dist < DARK_CLOSE then return true end
-	return ply:FlashlightIsOn() and dist < FLASHLIGHT_RANGE and ply:GetAimVector():Dot(to) > dist * FLASHLIGHT_COS
+	return ply:IsPlayer() and ply:FlashlightIsOn() and dist < FLASHLIGHT_RANGE and Facing(ply):Dot(to) > dist * FLASHLIGHT_COS
 end
 
 local function Ground(ply)
@@ -183,18 +199,31 @@ function ENT:PickTarget()
 		if IsValid(t) then hunted[t] = (hunted[t] or 0) + 1 end
 	end
 
-	local picks, fewest = {}, math.huge
-	for _, ply in ipairs(player.GetAll()) do
-		if Huntable(ply) then
-			local n = hunted[ply] or 0
-			if n < fewest then
-				picks, fewest = { ply }, n
-			elseif n == fewest then
-				picks[#picks + 1] = ply
+	-- The least hunted of each kind, leaning towards people when there's a choice.
+	local function Least(list)
+		local picks, fewest = {}, math.huge
+		for _, ent in ipairs(list) do
+			if Huntable(ent) then
+				local n = hunted[ent] or 0
+				if n < fewest then
+					picks, fewest = { ent }, n
+				elseif n == fewest then
+					picks[#picks + 1] = ent
+				end
 			end
 		end
+		return picks[math.random(math.max(#picks, 1))]
 	end
-	return picks[math.random(math.max(#picks, 1))]
+
+	local creatures = {}
+	if Setting("hunt_npcs") ~= 0 or Setting("hunt_nextbots") ~= 0 then
+		for _, ent in ipairs(ents.GetAll()) do
+			if ent:IsNPC() or ent:IsNextBot() then creatures[#creatures + 1] = ent end
+		end
+	end
+	local person, creature = Least(player.GetAll()), Least(creatures)
+	if person and (not creature or math.random() < PREFER_PLAYERS) then return person end
+	return creature
 end
 
 function ENT:Pace(speed, accel)
@@ -255,7 +284,7 @@ end
 
 -- A spot behind ply, so it comes at their back.
 local function Behind(ply)
-	local back = -ply:GetAimVector()
+	local back = -Facing(ply)
 	back.z = 0
 	back:Normalize()
 	local spot = ply:GetPos() + back * FLANK
@@ -303,18 +332,10 @@ function ENT:Unstick(now)
 	self.StuckSince = nil
 end
 
-function ENT:Catch(ply)
-	local to = ply:GetPos() - self:GetPos()
+function ENT:Catch(victim)
+	local to = victim:GetPos() - self:GetPos()
 	if math.abs(to.z) > CATCH_HEIGHT or to:Length2DSqr() > CATCH_RANGE * CATCH_RANGE then return false end
-	if Setting("kill_players") ~= 0 then
-		local dmg = DamageInfo()
-		dmg:SetDamage(1e6)
-		dmg:SetDamageType(DMG_GENERIC)
-		dmg:SetAttacker(self)
-		dmg:SetInflictor(self)
-		dmg:SetDamageForce(to:GetNormalized() * CATCH_FORCE)
-		ply:TakeDamageInfo(dmg)
-	end
+	if not victim:IsPlayer() or Setting("kill_players") ~= 0 then self.Meal = self:Slay(victim) end
 	self.FedUntil = CurTime() + Setting("sated_time")
 	return true
 end
@@ -444,7 +465,7 @@ end
 
 -- Someone on their own, holed up somewhere tight and keeping still, who hasn't been baited out of this spot yet.
 function ENT:Cornered(ply, now)
-	return now - self.CampSince >= CAMP_TIME and self.BaitedAt ~= self.CampSince
+	return ply:IsPlayer() and now - self.CampSince >= CAMP_TIME and self.BaitedAt ~= self.CampSince
 		and self:GetPos():DistToSqr(ply:GetPos()) < BAIT_RANGE * BAIT_RANGE
 		and Alone(ply) and Enclosed(ply)
 end
@@ -509,7 +530,7 @@ function BRAIN.stalk(self, from)
 		if self:SeenBy(target) then
 			return math.random() < Setting("chase_chance") and "chase" or "hide"
 		end
-		if self:Catch(target) then return "rest" end
+		if self:Catch(target) then return "feed" end
 		if now >= giveUp then return "relocate" end
 		if now >= lurk and self:Cornered(target, now) then
 			self.BaitedAt = self.CampSince
@@ -561,7 +582,7 @@ function BRAIN.chase(self)
 	while true do
 		local t, now = self:Tick()
 		if not t then return Done("idle") end
-		if self:Catch(t) then return Done("rest") end
+		if self:Catch(t) then return Done("feed") end
 		local close = breather and self:GetPos():DistToSqr(t:GetPos()) < BREATHER_RANGE * BREATHER_RANGE
 		local pace = close and math.min(BREATHER_SPEED, speed) or speed
 		self.loco:SetDesiredSpeed(pace)
@@ -613,7 +634,7 @@ function BRAIN.hide(self)
 		target = self:GetTarget()
 		if Huntable(target) then
 			if self:SeenBy(target) then seen = now end
-			self:Catch(target)
+			if self:Catch(target) then return "feed" end
 		end
 		if now - start > HIDE_TIME or now - seen > HIDE_UNSEEN or self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
 			break
@@ -621,7 +642,7 @@ function BRAIN.hide(self)
 		if not self:Approach(spot, now, sneaky) then break end
 	end
 
-	if self:Fed() then return "rest" end
+	if self:Fed() then return self.Meal and "feed" or "rest" end
 	if Huntable(self:GetTarget()) and math.random() < Setting("ambush_chance") then return "ambush" end
 	return "relocate"
 end
@@ -656,7 +677,7 @@ function BRAIN.lure(self)
 		local t, now = self:Tick()
 		if not t then return "idle" end
 		if self:SeenBy(t) or t:GetPos():DistToSqr(camp) > CAMP_RADIUS * CAMP_RADIUS then return "chase" end
-		if self:Catch(t) then return "rest" end
+		if self:Catch(t) then return "feed" end
 		if now - start > LURE_TIME then return "stalk" end
 		if spot and not waiting then
 			if self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
@@ -668,6 +689,16 @@ function BRAIN.lure(self)
 			self:Approach(Ground(t), now)
 		end
 	end
+end
+
+-- Eats what it just killed, right where it fell.
+function BRAIN.feed(self)
+	local body = self.Meal
+	self.Meal = nil
+	self:SetTarget(NULL)
+	self:SetEnraged(false)
+	if IsValid(body) then self:Eat(body) end
+	return "rest"
 end
 
 -- Fed. Lingers over the meal, then keeps out of everyone's sight until it's hungry again.

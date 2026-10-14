@@ -1,8 +1,14 @@
 Terminus = Terminus or {}
 
 Terminus.SETTINGS = {
+	{ name = "hunt_players", default = 1, min = 0, max = 1, label = "Hunts players",
+		help = "Goes after players" },
+	{ name = "hunt_npcs", default = 1, min = 0, max = 1, label = "Hunts NPCs",
+		help = "Includes VJ Base NPCs" },
+	{ name = "hunt_nextbots", default = 1, min = 0, max = 1, label = "Hunts nextbots",
+		help = "Includes DrGBase nextbots" },
 	{ name = "kill_players", default = 1, min = 0, max = 1, label = "Kills players",
-		help = "Catching a player kills them. At 0 it just walks off" },
+		help = "Catching a player kills and eats them. At 0 it just walks off" },
 	{ name = "dark_hides", default = 1, min = 0, max = 1, label = "Hides in the dark",
 		help = "It can't be spotted in the dark unless it's close or in your flashlight" },
 	{ name = "sated_time", default = 90, min = 0, max = 600, decimals = 0, label = "Sated time",
