@@ -17,7 +17,13 @@ local SIGHT_CLOSE = 160
 local SIGHT_TOP = Vector(0, 0, 110)
 local SPRITE_RADIUS = 48
 local ASPECT = 16 / 9
-local LOSE_SIGHT = 2
+local LEAD_MIN, LEAD_MAX = 250, 0.6
+local PREDICT = 1.2
+local SEARCH_TIME = 5
+local SEARCH_REACHED = 80
+local NAV_SNAP = 300
+local STEP = Vector(0, 0, 18)
+local HULL_MIN, HULL_MAX = Vector(-16, -16, 0), Vector(16, 16, 54)
 local BREATHER_CHANCE = 0.25
 local BREATHER_RANGE = 150
 local BREATHER_SPEED = 400
@@ -104,6 +110,24 @@ local function Ground(ply)
 	if ply:IsOnGround() then return pos end
 	local tr = util.TraceLine({ start = pos, endpos = pos - GROUND, mask = MASK_PLAYERSOLID_BRUSHONLY })
 	return tr.Hit and tr.HitPos or pos
+end
+
+-- Where someone at pos going at vel gets to in t seconds, stopping at walls and kept on the navmesh.
+local function Ahead(pos, vel, t)
+	local flat = Vector(vel.x, vel.y, 0) * t
+	if flat:LengthSqr() < 1 then return pos end
+	local from = pos + STEP
+	local tr = util.TraceHull({ start = from, endpos = from + flat, mins = HULL_MIN, maxs = HULL_MAX, mask = MASK_PLAYERSOLID_BRUSHONLY })
+	local spot = tr.HitPos - STEP
+	local area = navmesh.GetNearestNavArea(spot, false, NAV_SNAP, true)
+	return area and area:GetClosestPointOnArea(spot) or pos
+end
+
+-- Aims where they'll be by the time it gets there, so it cuts them off.
+function ENT:Lead(pos, vel, speed)
+	local dist = self:GetPos():Distance(pos)
+	if dist < LEAD_MIN then return pos end
+	return Ahead(pos, vel, math.min(dist / math.max(speed, 1), LEAD_MAX))
 end
 
 function ENT:Spots(ply)
@@ -365,6 +389,7 @@ function BRAIN.chase(self)
 
 	local breather = not enraged and math.random() < BREATHER_CHANCE
 	local seen = start
+	local lastPos, lastVel, guess
 
 	local function Done(nextState, escaped)
 		self:SetEnraged(false)
@@ -381,11 +406,23 @@ function BRAIN.chase(self)
 		if self:Catch(t) then return Done("hide") end
 		local close = breather and self:GetPos():DistToSqr(t:GetPos()) < BREATHER_RANGE * BREATHER_RANGE
 		self.loco:SetDesiredSpeed(close and math.min(BREATHER_SPEED, speed) or speed)
-		if self:Spots(t) then seen = now end
-		local reachable = self:Approach(Ground(t), now)
-		if now - start > Setting("chase_time") and (now - seen > LOSE_SIGHT or not reachable) then
-			return Done("relocate", true)
+		-- Knows where you are for the first stretch. After that it has to keep you in sight, and when it
+		-- loses you it heads where you were going.
+		local free = now - start > Setting("chase_time")
+		if not free or self:Spots(t) then
+			seen, lastPos, lastVel, guess = now, Ground(t), t:GetVelocity(), nil
 		end
+		local goal
+		if seen == now then
+			goal = self:Lead(lastPos, lastVel, speed)
+		else
+			guess = guess or Ahead(lastPos, lastVel, PREDICT)
+			goal = guess
+			if now - seen > SEARCH_TIME or self:GetPos():DistToSqr(guess) < SEARCH_REACHED * SEARCH_REACHED then
+				return Done("relocate", true)
+			end
+		end
+		if not self:Approach(goal, now) and free then return Done("relocate", true) end
 	end
 end
 
