@@ -1,6 +1,8 @@
 AddCSLuaFile()
 
 ENT.Base = "base_nextbot"
+ENT.PrintName = "Terminus"
+ENT.Category = "Terminus"
 ENT.Spawnable = true
 
 function ENT:Initialize()
@@ -623,5 +625,5 @@ end
 list.Set("NPC", "npc_terminus", {
     Name = "Terminus",
     Class = "npc_terminus",
-    Category = "Nextbot"
+    Category = "Terminus"
 })
