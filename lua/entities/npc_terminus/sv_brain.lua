@@ -272,10 +272,10 @@ end
 -- How much worse ground is to cross for being where ply can see it. Remembered for a moment, since a path
 -- search asks about the same areas over and over.
 function ENT:Exposure(area, ply, now)
-	local memo = self.Exposed
+	local memo = self.ExposureMemo
 	if not memo or memo.ply ~= ply or now >= memo.expires then
 		memo = { ply = ply, expires = now + EXPOSURE_MEMORY, eye = ply:EyePos(), traces = 0, areas = {} }
-		self.Exposed = memo
+		self.ExposureMemo = memo
 	end
 	local id = area:GetID()
 	local cost = memo.areas[id]
