@@ -57,6 +57,8 @@ local DARK_CLOSE = 300
 local FLASHLIGHT_RANGE = 1000
 local FLASHLIGHT_COS = math.cos(math.rad(30))
 local GROUND = Vector(0, 0, 16384)
+local ARRIVE_SOUND = ")terminus/close_stalking_2.wav"
+local ARRIVE_LEVEL, ARRIVE_PITCH = 80, 60
 
 local function Huntable(ply)
 	return IsValid(ply) and ply:IsPlayer() and ply:Alive()
@@ -339,6 +341,7 @@ function BRAIN.relocate(self)
 		if spot then
 			self:SetPos(spot)
 			self.Placed = true
+			sound.Play(ARRIVE_SOUND, spot + EYE, ARRIVE_LEVEL, ARRIVE_PITCH)
 			return "stalk"
 		end
 		coroutine.wait(0.2)

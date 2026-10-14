@@ -17,8 +17,11 @@ local AMBIENCE = {
 local AMBIENCE_GAP = { 6, 18 }
 local AMBIENCE_VOLUME = 0.6
 local CREEPING = { [STATE.stalk] = true, [STATE.hide] = true }
-local SPOTTED_FROM = { [STATE.stalk] = true, [STATE.ambush] = true }
-local SPOTTED_TO = { [STATE.chase] = true, [STATE.hide] = true }
+local HEART = "player/heartbeat1.wav"
+local HEART_RANGE = 1200
+local HEART_PITCH = { 85, 140 }
+local HEART_VOLUME = { 0.2, 1 }
+local HEARTBEAT = { [STATE.stalk] = true, [STATE.hide] = true }
 
 local function Length(path)
 	return math.max(SoundDuration((path:gsub("^%)", ""))), 0.1)
@@ -83,12 +86,14 @@ end
 
 local music
 local nextAmbience = 0
+local nextBeat = 0
 
 hook.Add("Think", "TerminusAudio", function()
 	local me = LocalPlayer()
 	if not IsValid(me) then return end
 	local now = CurTime()
 	local chased, enraged, stalked = false, false, false
+	local near = 0
 
 	for _, ent in ipairs(ents.FindByClass("npc_terminus")) do
 		local v = Voice(ent)
@@ -99,7 +104,8 @@ hook.Add("Think", "TerminusAudio", function()
 			chased = chased or state == STATE.chase
 			enraged = enraged or (state == STATE.chase and ent:GetEnraged())
 			stalked = stalked or state == STATE.stalk
-			if SPOTTED_FROM[v.state] and SPOTTED_TO[state] then me:EmitSound(STING, 0, 100, 1, CHAN_STATIC) end
+			if HEARTBEAT[state] then near = math.max(near, 1 - ent:GetPos():Distance(me:GetPos()) / HEART_RANGE) end
+			if Terminus.Spotted(v.state, state) then me:EmitSound(STING, 0, 100, 1, CHAN_STATIC) end
 		end
 		v.state = state
 		v.heard = now
@@ -130,5 +136,11 @@ hook.Add("Think", "TerminusAudio", function()
 		end
 	else
 		nextAmbience = 0
+	end
+
+	if near > 0 and me:Alive() and Setting("stalk_ambience") ~= 0 and now >= nextBeat then
+		local pitch = Lerp(near, HEART_PITCH[1], HEART_PITCH[2])
+		me:EmitSound(HEART, 0, pitch, Lerp(near, HEART_VOLUME[1], HEART_VOLUME[2]), CHAN_STATIC)
+		nextBeat = now + Length(HEART) * 100 / pitch
 	end
 end)

@@ -15,6 +15,10 @@ local FLASHLIGHT_RANGE = 1000
 local FLASHLIGHT_COS = math.cos(math.rad(30))
 local REPORT_EVERY = 0.2
 local REPORT_CHANGE = 8
+local POP_TIME = 0.35
+local POP_SIZE = 0.3
+local POP_SHAKE = 8
+local FLICKER = 0.08
 
 local tint = Color(255, 255, 255)
 
@@ -44,20 +48,34 @@ function ENT:Initialize()
 end
 
 function ENT:RenderOverride()
-	local pos, color = self:SightPos(), tint
-	local chasing = self:GetState() == Terminus.STATE.chase
-	if chasing and self:GetEnraged() then
-		pos = pos + VectorRand() * RAGE_SHAKE
-		color = RAGE_TINT
+	local state = self:GetState()
+	local pos, size, shake, color = self:SightPos(), SIZE, 0, tint
+	if state == Terminus.STATE.chase and self:GetEnraged() then
+		shake, color = RAGE_SHAKE, RAGE_TINT
 	else
 		local r, g, b = Lighting(pos)
 		local f = Flashlit(pos)
 		tint.r, tint.g, tint.b = Lerp(f, r, 1) * 255, Lerp(f, g, 1) * 255, Lerp(f, b, 1) * 255
-		if chasing then pos = pos + VectorRand() * CHASE_SHAKE end
+		tint.a = (state == Terminus.STATE.hide and math.random() < FLICKER) and 0 or 255
+		if state == Terminus.STATE.chase then shake = CHASE_SHAKE end
 	end
+	local pop = 1 - (CurTime() - (self.SpottedAt or -math.huge)) / POP_TIME
+	if pop > 0 then
+		size = size * (1 + POP_SIZE * pop)
+		shake = shake + POP_SHAKE * pop
+	end
+	if shake > 0 then pos = pos + VectorRand() * shake end
 	render.SetMaterial(SPRITE)
-	render.DrawSprite(pos, SIZE, SIZE, color)
+	render.DrawSprite(pos, size, size, color)
 end
+
+hook.Add("Think", "TerminusSpotted", function()
+	for _, ent in ipairs(ents.FindByClass("npc_terminus")) do
+		local state = ent:GetState()
+		if ent.LastState and Terminus.Spotted(ent.LastState, state) then ent.SpottedAt = CurTime() end
+		ent.LastState = state
+	end
+end)
 
 -- Tells the server how lit it is for whoever it's after, so it can hide in the dark.
 local reportAt = 0
