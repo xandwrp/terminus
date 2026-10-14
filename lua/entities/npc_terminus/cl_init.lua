@@ -56,7 +56,8 @@ function ENT:RenderOverride()
 		local r, g, b = Lighting(pos)
 		local f = Flashlit(pos)
 		tint.r, tint.g, tint.b = Lerp(f, r, 1) * 255, Lerp(f, g, 1) * 255, Lerp(f, b, 1) * 255
-		tint.a = (state == Terminus.STATE.hide and math.random() < FLICKER) and 0 or 255
+		local leaving = state == Terminus.STATE.hide or state == Terminus.STATE.feint
+		tint.a = (leaving and math.random() < FLICKER) and 0 or 255
 		if state == Terminus.STATE.chase then shake = CHASE_SHAKE end
 	end
 	local pop = 1 - (CurTime() - (self.SpottedAt or -math.huge)) / POP_TIME

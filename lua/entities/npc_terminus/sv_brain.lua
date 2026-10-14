@@ -59,6 +59,23 @@ local FLASHLIGHT_COS = math.cos(math.rad(30))
 local GROUND = Vector(0, 0, 16384)
 local ARRIVE_SOUND = ")terminus/close_stalking_2.wav"
 local ARRIVE_LEVEL, ARRIVE_PITCH = 80, 60
+local CAMP_RADIUS = 120
+local CAMP_TIME = 12
+local ENCLOSED_REACH = 250
+local ENCLOSED_HITS = 5
+local ALONE_RANGE = 1000
+local BAIT_RANGE = 900
+local FEINT_REACH = 1400
+local FEINT_TIME = 6
+local LURK_SPOT = { 100, 400 }
+local LURK_WAIT = 25
+local LURE_TIME = 60
+local WAIST = Vector(0, 0, 36)
+local AROUND = {}
+for i = 0, 7 do
+	local a = i * math.pi / 4
+	AROUND[#AROUND + 1] = Vector(math.cos(a), math.sin(a), 0) * ENCLOSED_REACH
+end
 
 local function Huntable(ply)
 	return IsValid(ply) and ply:IsPlayer() and ply:Alive()
@@ -298,8 +315,8 @@ function ENT:Unseen(spot, hidden)
 	return true
 end
 
-function ENT:HideSpot(from)
-	local areas = navmesh.Find(self:GetPos(), HIDE_RANGE, DROP, CLIMB)
+function ENT:HideSpot(from, reach)
+	local areas = navmesh.Find(self:GetPos(), reach or HIDE_RANGE, DROP, CLIMB)
 	local best, farthest = nil, 0
 	for _ = 1, math.min(#areas, SPOT_SAMPLES) do
 		local spot = areas[math.random(#areas)]:GetRandomPoint()
@@ -309,11 +326,54 @@ function ENT:HideSpot(from)
 	return best
 end
 
+-- The closest spot near ply that they've got no line of sight to.
+function ENT:LurkSpot(ply)
+	local origin = ply:GetPos()
+	local areas = navmesh.Find(origin, LURK_SPOT[2], CLIMB, DROP)
+	local best, nearest = nil, math.huge
+	for _ = 1, math.min(#areas, SPOT_SAMPLES * 2) do
+		local spot = areas[math.random(#areas)]:GetRandomPoint()
+		local d = spot:DistToSqr(origin)
+		if d > LURK_SPOT[1] * LURK_SPOT[1] and d < nearest and not Sees(ply, spot, true) then best, nearest = spot, d end
+	end
+	return best
+end
+
+local function Enclosed(ply)
+	local from = ply:GetPos() + WAIST
+	local hits = 0
+	for _, dir in ipairs(AROUND) do
+		if util.TraceLine({ start = from, endpos = from + dir, mask = MASK_SOLID, filter = ply }).Hit then hits = hits + 1 end
+	end
+	return hits >= ENCLOSED_HITS
+end
+
+local function Alone(ply)
+	local pos = ply:GetPos()
+	for _, other in ipairs(player.GetAll()) do
+		if other ~= ply and other:Alive() and other:GetPos():DistToSqr(pos) < ALONE_RANGE * ALONE_RANGE then return false end
+	end
+	return true
+end
+
+-- Someone on their own, holed up somewhere tight and keeping still, who hasn't been baited out of this spot yet.
+function ENT:Cornered(ply, now)
+	return now - self.CampSince >= CAMP_TIME and self.BaitedAt ~= self.CampSince
+		and self:GetPos():DistToSqr(ply:GetPos()) < BAIT_RANGE * BAIT_RANGE
+		and Alone(ply) and Enclosed(ply)
+end
+
 -- Waits a tick. Returns the target and the time if it's still worth hunting.
 function ENT:Tick()
 	coroutine.yield()
 	local target = self:GetTarget()
-	if Huntable(target) then return target, CurTime() end
+	if not Huntable(target) then return end
+	local now = CurTime()
+	local pos = target:GetPos()
+	if self.CampFor ~= target or pos:DistToSqr(self.CampPos) > CAMP_RADIUS * CAMP_RADIUS then
+		self.CampFor, self.CampPos, self.CampSince = target, pos, now
+	end
+	return target, now
 end
 
 local BRAIN = {}
@@ -362,6 +422,10 @@ function BRAIN.stalk(self, from)
 		end
 		if self:Catch(target) then return "hide" end
 		if now >= giveUp then return "relocate" end
+		if now >= lurk and self:Cornered(target, now) then
+			self.BaitedAt = self.CampSince
+			return "feint"
+		end
 		if now >= lurk then
 			-- Waits at the corner while the next stretch is in view, and goes when they look away.
 			local ahead = self:PathAhead(HOLD_AHEAD)
@@ -454,6 +518,50 @@ function BRAIN.hide(self)
 
 	if Huntable(self:GetTarget()) and math.random() < Setting("ambush_chance") then return "ambush" end
 	return "relocate"
+end
+
+-- Walks off where they can hear it go.
+function BRAIN.feint(self)
+	self:Pace(Setting("stalk_speed"), STALK_ACCEL)
+	local target = self:GetTarget()
+	local spot = self:HideSpot(target:GetPos(), FEINT_REACH)
+	if not spot then return "lure" end
+	local sneaky = self:Sneaky(target)
+	local start = CurTime()
+	while true do
+		local t, now = self:Tick()
+		if not t then return "idle" end
+		if now - start > FEINT_TIME or self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then return "lure" end
+		if not self:Approach(spot, now, sneaky) then return "lure" end
+	end
+end
+
+-- Comes back without a sound and waits just out of sight of their hiding spot. Goes for them the moment
+-- they come out, or walks in when it's done waiting.
+function BRAIN.lure(self)
+	self:Pace(Setting("stalk_speed"), STALK_ACCEL)
+	local target = self:GetTarget()
+	local camp = self.CampPos
+	local spot = self:LurkSpot(target)
+	local sneaky = self:Sneaky(target)
+	local start = CurTime()
+	local waiting
+	while true do
+		local t, now = self:Tick()
+		if not t then return "idle" end
+		if self:SeenBy(t) or t:GetPos():DistToSqr(camp) > CAMP_RADIUS * CAMP_RADIUS then return "chase" end
+		if self:Catch(t) then return "hide" end
+		if now - start > LURE_TIME then return "stalk" end
+		if spot and not waiting then
+			if self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
+				waiting = now
+			elseif not self:Approach(spot, now, sneaky) then
+				spot = nil
+			end
+		elseif not waiting or now - waiting >= LURK_WAIT then
+			self:Approach(Ground(t), now)
+		end
+	end
 end
 
 function BRAIN.ambush(self)

@@ -1,12 +1,12 @@
 Terminus = Terminus or {}
 
-Terminus.STATES = { "idle", "relocate", "stalk", "chase", "hide", "ambush" }
+Terminus.STATES = { "idle", "relocate", "stalk", "chase", "hide", "ambush", "feint", "lure" }
 Terminus.STATE = {}
 for i, name in ipairs(Terminus.STATES) do Terminus.STATE[name] = i end
 
 Terminus.EYE = Vector(0, 0, 64)
 
-local SPOTTED_FROM = { stalk = true, ambush = true }
+local SPOTTED_FROM = { stalk = true, ambush = true, lure = true }
 local SPOTTED_TO = { chase = true, hide = true }
 
 -- Whether going between these two states means someone just spotted it.

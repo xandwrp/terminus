@@ -16,12 +16,12 @@ local AMBIENCE = {
 }
 local AMBIENCE_GAP = { 6, 18 }
 local AMBIENCE_VOLUME = 0.6
-local CREEPING = { [STATE.stalk] = true, [STATE.hide] = true }
+local CREEPING = { [STATE.stalk] = true, [STATE.hide] = true, [STATE.feint] = true }
 local HEART = "player/heartbeat1.wav"
 local HEART_RANGE = 1200
 local HEART_PITCH = { 85, 140 }
 local HEART_VOLUME = { 0.2, 1 }
-local HEARTBEAT = { [STATE.stalk] = true, [STATE.hide] = true }
+local HEARTBEAT = { [STATE.stalk] = true, [STATE.hide] = true, [STATE.feint] = true }
 
 local function Length(path)
 	return math.max(SoundDuration((path:gsub("^%)", ""))), 0.1)
