@@ -1,4 +1,5 @@
 local STATE = Terminus.STATE
+local CHASING = Terminus.CHASING
 local Setting = Terminus.Setting
 
 local CLOSE = { ")terminus/close_stalking_1.wav", ")terminus/close_stalking_2.wav" }
@@ -99,17 +100,17 @@ hook.Add("Think", "TerminusAudio", function()
 	for _, ent in ipairs(ents.FindByClass("npc_terminus")) do
 		local v = Voice(ent)
 		local state = ent:GetState()
-		v.chase:Hold(state == STATE.chase, 1, now)
+		v.chase:Hold(CHASING[state], 1, now)
 		if state ~= v.state then v.since = now end
 		-- Walking off as bait, it fades out on purpose so it sounds like it's really going.
 		local fade = state == STATE.feint and math.max(0, 1 - (now - v.since) / FEINT_FADE) or 1
 		Creep(v, CREEPING[state] and fade > 0, fade, now)
 		if ent:GetTarget() == me then
-			chased = chased or state == STATE.chase
-			enraged = enraged or (state == STATE.chase and ent:GetEnraged())
+			chased = chased or CHASING[state]
+			enraged = enraged or (CHASING[state] and ent:GetEnraged())
 			stalked = stalked or state == STATE.stalk
 			if HEARTBEAT[state] then near = math.max(near, (1 - ent:GetPos():Distance(me:GetPos()) / HEART_RANGE) * fade) end
-			if Terminus.Spotted(v.state, state) then me:EmitSound(STING, 0, 100, 1, CHAN_STATIC) end
+			if Terminus.Jolted(v.state, state) then me:EmitSound(STING, 0, 100, 1, CHAN_STATIC) end
 		end
 		v.state = state
 		v.heard = now

@@ -53,7 +53,7 @@ end
 function ENT:RenderOverride()
 	local state = self:GetState()
 	local pos, size, shake, color = self:SightPos(), SIZE, 0, tint
-	if state == Terminus.STATE.chase and self:GetEnraged() then
+	if Terminus.CHASING[state] and self:GetEnraged() then
 		shake, color = RAGE_SHAKE, RAGE_TINT
 	else
 		local r, g, b = Lighting(pos)
@@ -61,7 +61,7 @@ function ENT:RenderOverride()
 		tint.r, tint.g, tint.b = Lerp(f, r, 1) * 255, Lerp(f, g, 1) * 255, Lerp(f, b, 1) * 255
 		local leaving = state == Terminus.STATE.hide or state == Terminus.STATE.feint
 		tint.a = (leaving and math.random() < FLICKER) and 0 or 255
-		if state == Terminus.STATE.chase then shake = CHASE_SHAKE end
+		if Terminus.CHASING[state] then shake = CHASE_SHAKE end
 	end
 	if state == Terminus.STATE.feed then
 		pos = pos - vector_up * (FEED_DIP + CHEW_DEPTH * math.abs(math.sin(CurTime() * CHEW_RATE)))
@@ -85,7 +85,7 @@ end)
 hook.Add("Think", "TerminusSpotted", function()
 	for _, ent in ipairs(ents.FindByClass("npc_terminus")) do
 		local state = ent:GetState()
-		if ent.LastState and Terminus.Spotted(ent.LastState, state) then ent.SpottedAt = CurTime() end
+		if ent.LastState and Terminus.Jolted(ent.LastState, state) then ent.SpottedAt = CurTime() end
 		ent.LastState = state
 	end
 end)

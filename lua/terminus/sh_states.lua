@@ -1,6 +1,6 @@
 Terminus = Terminus or {}
 
-Terminus.STATES = { "idle", "relocate", "stalk", "chase", "hide", "ambush", "feint", "lure", "rest", "feed" }
+Terminus.STATES = { "idle", "relocate", "stalk", "chase", "hide", "ambush", "feint", "lure", "rest", "feed", "fly" }
 Terminus.STATE = {}
 for i, name in ipairs(Terminus.STATES) do Terminus.STATE[name] = i end
 
@@ -14,3 +14,10 @@ local SPOTTED_TO = { chase = true, hide = true }
 function Terminus.Spotted(from, to)
 	return SPOTTED_FROM[Terminus.STATES[from]] and SPOTTED_TO[Terminus.STATES[to]] or false
 end
+
+-- Whether going between these two states should hit like being spotted: that, or taking off.
+function Terminus.Jolted(from, to)
+	return Terminus.Spotted(from, to) or to == Terminus.STATE.fly and from ~= to
+end
+
+Terminus.CHASING = { [Terminus.STATE.chase] = true, [Terminus.STATE.fly] = true }

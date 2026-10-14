@@ -48,6 +48,17 @@ local IDLE_CHECK = 0.2
 local IDLE_PICK = 1
 local IDLE_STARE = 1
 local STATIC_COVER = 0.25
+local TEASE_RANGE = 600
+local TEASE_COOL = 0.5
+local SWIMMING = 2
+local FLY_LIFT = Vector(0, 0, 32)
+local FLY_RISE, FLY_RISE_SPEED = 1.5, 80
+local FLY_ACCEL = 1500
+local FLY_TURN = 5
+local FLY_CLOSE = 6
+local FLY_HOVER = Vector(0, 0, 24)
+local FLY_TIME = 30
+local LAND_REACH = 4000
 local EXPOSED_COST, BEHIND_COST = 4, 0.5
 local EXPOSURE_MEMORY = 0.5
 local EXPOSURE_TRACES = 400
@@ -367,6 +378,23 @@ function ENT:Fed()
 	return CurTime() < self.FedUntil
 end
 
+-- Counts up while target keeps just out of reach nearby: swimming, or hanging over it in noclip or up a
+-- ladder. True once that's gone on long enough.
+function ENT:Taunted(target, now)
+	local dt = math.min(now - (self.TauntAt or now), 0.5)
+	self.TauntAt = now
+	if self.TauntBy ~= target then self.TauntBy, self.Taunt = target, 0 end
+	local to = target:GetPos() - self:GetPos()
+	local away = to.z > CATCH_HEIGHT or target:WaterLevel() >= SWIMMING
+	if away and not target:IsOnGround() and to:Length2DSqr() < TEASE_RANGE * TEASE_RANGE then
+		self.Taunt = self.Taunt + dt
+	else
+		self.Taunt = math.max(self.Taunt - dt * TEASE_COOL, 0)
+	end
+	local limit = Setting("tease_time")
+	return limit > 0 and self.Taunt >= limit
+end
+
 local allAreas, allAreasCount
 local function AllAreas()
 	local n = navmesh.GetNavAreaCount()
@@ -569,6 +597,7 @@ function BRAIN.stalk(self, from)
 			return math.random() < Setting("chase_chance") and "chase" or "hide"
 		end
 		if self:Catch(target) then return "feed" end
+		if self:Taunted(target, now) then return "fly" end
 		if now >= giveUp then return "relocate" end
 		if now >= lurk and self:Cornered(target, now) then
 			self.BaitedAt = self.CampSince
@@ -621,6 +650,7 @@ function BRAIN.chase(self)
 		local t, now = self:Tick()
 		if not t then return Done("idle") end
 		if self:Catch(t) then return Done("feed") end
+		if self:Taunted(t, now) then return Done("fly") end
 		local close = breather and self:GetPos():DistToSqr(t:GetPos()) < BREATHER_RANGE * BREATHER_RANGE
 		local pace = close and math.min(BREATHER_SPEED, speed) or speed
 		self.loco:SetDesiredSpeed(pace)
@@ -673,6 +703,7 @@ function BRAIN.hide(self)
 		if Huntable(target) then
 			if self:SeenBy(target) then seen = now end
 			if self:Catch(target) then return "feed" end
+			if self:Taunted(target, now) then return "fly" end
 		end
 		if now - start > HIDE_TIME or now - seen > HIDE_UNSEEN or self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
 			break
@@ -716,6 +747,7 @@ function BRAIN.lure(self)
 		if not t then return "idle" end
 		if self:SeenBy(t) or t:GetPos():DistToSqr(camp) > CAMP_RADIUS * CAMP_RADIUS then return "chase" end
 		if self:Catch(t) then return "feed" end
+		if self:Taunted(t, now) then return "fly" end
 		if now - start > LURE_TIME then return "stalk" end
 		if spot and not waiting then
 			if self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
@@ -763,6 +795,7 @@ function BRAIN.ambush(self)
 		local target, now = self:Tick()
 		if not target then return "idle" end
 		if self:SeenBy(target) then return "chase" end
+		if self:Taunted(target, now) then return "fly" end
 		if self:GetPos():DistToSqr(target:GetPos()) < AMBUSH_RANGE * AMBUSH_RANGE and self:Spots(target) then
 			return "chase"
 		end
@@ -770,7 +803,61 @@ function BRAIN.ambush(self)
 	end
 end
 
+-- Kept out of reach long enough, so it stops bothering with the ground. Lifts off slow, then comes straight
+-- for them through whatever's in the way.
+function BRAIN.fly(self)
+	local target = self:GetTarget()
+	if not Huntable(target) then return "idle" end
+	local loco = self.loco
+	self.Escapes[target] = 0
+	self.Taunt = 0
+	self:SetEnraged(true)
+	loco:SetGravity(0)
+	loco:SetVelocity(vector_origin)
+	self:SetPos(self:GetPos() + FLY_LIFT)
+	local start, last = CurTime(), CurTime()
+	local vel = Vector()
+
+	local function Land(nextState)
+		self:SetEnraged(false)
+		loco:SetGravity(self.BaseGravity)
+		loco:SetVelocity(vector_origin)
+		local pos = self:GetPos()
+		local area = navmesh.GetNearestNavArea(pos, true, LAND_REACH)
+		if area then self:Blink(area:GetClosestPointOnArea(pos)) end
+		return nextState
+	end
+
+	while true do
+		local t, now = self:Tick()
+		if not t then return Land("idle") end
+		if self:Catch(t) then return Land("feed") end
+		if now - start > FLY_TIME then
+			self.TiredUntil = now + Setting("tired_time")
+			return Land("relocate")
+		end
+		local dt = now - last
+		last = now
+		local pos = self:GetPos()
+		local want
+		if now - start < FLY_RISE then
+			want = Vector(0, 0, FLY_RISE_SPEED)
+		else
+			local aim = t:GetPos() + FLY_HOVER
+			local dist = pos:Distance(aim)
+			local speed = math.min(Setting("rage_speed"), FLY_ACCEL * (now - start - FLY_RISE), dist * FLY_CLOSE)
+			want = aim + t:GetVelocity() * math.min(dist / math.max(speed, 1), LEAD_MAX) - pos
+			want:Normalize()
+			want:Mul(speed)
+		end
+		vel = LerpVector(1 - math.exp(-dt * FLY_TURN), vel, want)
+		self:SetPos(pos + vel * dt)
+		loco:SetVelocity(vector_origin)
+	end
+end
+
 function ENT:RunBehaviour()
+	self.loco:SetGravity(self.BaseGravity)
 	local state = "idle"
 	while true do
 		local from = self:StateName()

@@ -28,7 +28,7 @@ hook.Add("RenderScreenspaceEffects", "TerminusDread", function()
 				local state = ent:GetState()
 				local near = 1 - math.min(ent:GetPos():Distance(me:GetPos()) / RANGE, 1)
 				local d = 0
-				if state == STATE.chase then
+				if Terminus.CHASING[state] then
 					d = CHASE_FLOOR + (1 - CHASE_FLOOR) * near
 					if ent:GetEnraged() then angry = 1 end
 				elseif state == STATE.stalk or state == STATE.ambush then
