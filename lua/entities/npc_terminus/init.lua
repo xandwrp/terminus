@@ -9,6 +9,7 @@ local ai_disabled = GetConVar("ai_disabled")
 local RESTART_DELAY = 1
 
 util.AddNetworkString("TerminusLight")
+util.AddNetworkString("TerminusStatic")
 
 net.Receive("TerminusLight", function(_, ply)
 	local ent = net.ReadEntity()

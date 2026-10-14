@@ -44,6 +44,7 @@ local SPAWN_CLOSER_TRIES = 20
 local SPOT_SAMPLES = 16
 local CLIMB, DROP = 120, 4000
 local IDLE_FORGET = 3
+local STATIC_COVER = 0.25
 local EXPOSED_COST, BEHIND_COST = 4, 0.5
 local EXPOSURE_MEMORY = 0.5
 local EXPOSURE_TRACES = 400
@@ -189,6 +190,24 @@ function ENT:Watched(pos, anyway)
 	end
 end
 
+-- Jumps to spot. Anyone who'd see it go or turn up, or is spectating it, gets a burst of static to cover
+-- the jump.
+function ENT:Blink(spot)
+	local from = self:GetPos()
+	local watchers = {}
+	for _, ply in ipairs(player.GetAll()) do
+		if ply:GetObserverTarget() == self or ply:Alive() and (Sees(ply, from) or Sees(ply, spot)) then
+			watchers[#watchers + 1] = ply
+		end
+	end
+	if #watchers > 0 then
+		net.Start("TerminusStatic")
+		net.Send(watchers)
+		coroutine.wait(STATIC_COVER)
+	end
+	self:SetPos(spot)
+end
+
 function ENT:PickTarget()
 	local current = self:GetTarget()
 	if Huntable(current) then return current end
@@ -327,7 +346,7 @@ function ENT:Unstick(now)
 	self.StuckSince = self.StuckSince or now
 	if now - self.StuckSince < STUCK_WARP then return end
 	local goal = self.Path:IsValid() and self.Path:GetCurrentGoal()
-	if goal and not self:Watched(self:GetPos()) and not self:Watched(goal.pos) then self:SetPos(goal.pos) end
+	if goal and not self:Watched(self:GetPos()) and not self:Watched(goal.pos) then self:Blink(goal.pos) end
 	self.loco:ClearStuck()
 	self.StuckSince = nil
 end
@@ -509,7 +528,7 @@ function BRAIN.relocate(self)
 		if not Huntable(target) then return "idle" end
 		local spot = self:SpawnSpot(target:GetPos(), tries)
 		if spot then
-			self:SetPos(spot)
+			self:Blink(spot)
 			self.Placed = true
 			sound.Play(ARRIVE_SOUND, spot + EYE, ARRIVE_LEVEL, ARRIVE_PITCH)
 			return "stalk"
@@ -712,7 +731,7 @@ function BRAIN.rest(self)
 			self:Slink(watcher)
 		elseif CurTime() >= linger and self:Exposed(self:GetPos()) then
 			local spot = self:VanishSpot()
-			if spot and not self:Watched(self:GetPos()) then self:SetPos(spot) end
+			if spot and not self:Watched(self:GetPos()) then self:Blink(spot) end
 		end
 		coroutine.wait(REST_CHECK)
 	end
