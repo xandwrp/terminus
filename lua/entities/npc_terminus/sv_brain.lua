@@ -39,6 +39,13 @@ local SPAWN_CLOSER_TRIES = 20
 local SPOT_SAMPLES = 16
 local CLIMB, DROP = 120, 4000
 local IDLE_FORGET = 3
+local EXPOSED_COST, BEHIND_COST = 4, 0.5
+local EXPOSURE_MEMORY = 0.5
+local EXPOSURE_TRACES = 400
+local SIGHT_FAR = 3000
+local FLANK, FLANK_RANGE = 300, 700
+local HOLD_AHEAD = 120
+local HOLD_MAX = 8
 local GROUND = Vector(0, 0, 16384)
 
 local function Huntable(ply)
@@ -124,13 +131,64 @@ function ENT:Pace(speed, accel)
 	self.loco:SetAcceleration(accel)
 end
 
+-- How much worse ground is to cross for being where ply can see it. Remembered for a moment, since a path
+-- search asks about the same areas over and over.
+function ENT:Exposure(area, ply, now)
+	local memo = self.Exposed
+	if not memo or memo.ply ~= ply or now >= memo.expires then
+		memo = { ply = ply, expires = now + EXPOSURE_MEMORY, eye = ply:EyePos(), traces = 0, areas = {} }
+		self.Exposed = memo
+	end
+	local id = area:GetID()
+	local cost = memo.areas[id]
+	if cost then return cost end
+	cost = 0
+	local point = area:GetCenter() + EYE
+	if memo.traces < EXPOSURE_TRACES and point:DistToSqr(memo.eye) < SIGHT_FAR * SIGHT_FAR then
+		memo.traces = memo.traces + 1
+		if Clear(memo.eye, point, ply) then cost = OnScreen(ply, point) and EXPOSED_COST or BEHIND_COST end
+	end
+	memo.areas[id] = cost
+	return cost
+end
+
+-- A path cost that steers around ground ply can see.
+function ENT:Sneaky(ply)
+	local loco = self.loco
+	return function(area, from, ladder, _, length)
+		if not IsValid(from) then return 0 end
+		if IsValid(ladder) or not loco:IsAreaTraversable(area) then return -1 end
+		local rise = from:ComputeAdjacentConnectionHeightChange(area)
+		if rise > loco:GetMaxJumpHeight() or rise < -loco:GetDeathDropHeight() then return -1 end
+		local dist = length > 0 and length or area:GetCenter():Distance(from:GetCenter())
+		local exposure = IsValid(ply) and self:Exposure(area, ply, CurTime()) or 0
+		return from:GetCostSoFar() + dist * (1 + exposure)
+	end
+end
+
+-- A spot behind ply, so it comes at their back.
+local function Behind(ply)
+	local back = -ply:GetAimVector()
+	back.z = 0
+	back:Normalize()
+	local spot = ply:GetPos() + back * FLANK
+	local area = navmesh.GetNearestNavArea(spot, false, FLANK, true)
+	return area and area:GetClosestPointOnArea(spot) or Ground(ply)
+end
+
+function ENT:PathAhead(dist)
+	local path = self.Path
+	if not path or not path:IsValid() then return end
+	return path:GetPositionOnPath(path:GetCursorPosition() + dist)
+end
+
 -- Steps along a path to goal. Returns false once there's been no way there for a few seconds.
-function ENT:Approach(goal, now)
+function ENT:Approach(goal, now, cost)
 	if now >= self.RepathAt then
 		local path = self.Path or Path("Follow")
 		path:SetMinLookAheadDistance(LOOKAHEAD)
 		path:SetGoalTolerance(GOAL_TOLERANCE)
-		local reached = path:Compute(self, goal)
+		local reached = path:Compute(self, goal, cost)
 		self.Path = path
 		self.RepathAt = now + Lerp(math.min(self:GetPos():Distance(goal) / REPATH_RANGE, 1), REPATH_NEAR, REPATH_FAR)
 		if reached then
@@ -250,6 +308,8 @@ function BRAIN.stalk(self, from)
 	self:Pace(Setting("stalk_speed"), STALK_ACCEL)
 	local lurk = CurTime() + (from == "relocate" and Setting("lurk_time") or 0)
 	local giveUp = lurk + Setting("stalk_time")
+	local sneaky = self:Sneaky(self:GetTarget())
+	local held
 	while true do
 		local target, now = self:Tick()
 		if not target then return "idle" end
@@ -258,7 +318,15 @@ function BRAIN.stalk(self, from)
 		end
 		if self:Catch(target) then return "hide" end
 		if now >= giveUp then return "relocate" end
-		if now >= lurk and not self:Approach(Ground(target), now) then return "relocate" end
+		if now >= lurk then
+			-- Waits at the corner while the next stretch is in view, and goes when they look away.
+			local ahead = self:PathAhead(HOLD_AHEAD)
+			if ahead and Sees(target, ahead) then held = held or now else held = nil end
+			if not held or now - held >= HOLD_MAX then
+				local close = self:GetPos():DistToSqr(target:GetPos()) < FLANK_RANGE * FLANK_RANGE
+				if not self:Approach(close and Ground(target) or Behind(target), now, sneaky) then return "relocate" end
+			end
+		end
 	end
 end
 
@@ -310,6 +378,7 @@ function BRAIN.hide(self)
 	local spot = self:HideSpot(IsValid(target) and target:GetPos() or self:GetPos())
 	if not spot then return "relocate" end
 
+	local sneaky = self:Sneaky(target)
 	local start = CurTime()
 	local seen = start
 	while true do
@@ -323,7 +392,7 @@ function BRAIN.hide(self)
 		if now - start > HIDE_TIME or now - seen > HIDE_UNSEEN or self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
 			break
 		end
-		if not self:Approach(spot, now) then break end
+		if not self:Approach(spot, now, sneaky) then break end
 	end
 
 	if Huntable(self:GetTarget()) and math.random() < Setting("ambush_chance") then return "ambush" end
