@@ -76,6 +76,12 @@ local RAGE_GRIP, TIRED_GRIP = 0.5, 0.5
 local DIRECT_RANGE, DIRECT_HEIGHT = 300, 48
 local DIRECT_LEAD = 0.35
 local STEER_TIGHT = 15
+local REST_CHECK = 0.5
+local REST_NEAR = 2000
+local LINGER = 4
+local SLINK_TIME = 10
+local VANISH_BATCHES = 10
+local VANISH_WAIT = 10
 local AROUND = {}
 for i = 0, 7 do
 	local a = i * math.pi / 4
@@ -160,11 +166,11 @@ function ENT:Spots(ply)
 	return Clear(eye, ply:EyePos(), filter) or Clear(eye, ply:WorldSpaceCenter(), filter)
 end
 
+-- Whoever can see it at pos, if anyone.
 function ENT:Watched(pos, anyway)
 	for _, ply in ipairs(player.GetAll()) do
-		if ply:Alive() and Sees(ply, pos, anyway) then return true end
+		if ply:Alive() and Sees(ply, pos, anyway) then return ply end
 	end
-	return false
 end
 
 function ENT:PickTarget()
@@ -309,7 +315,66 @@ function ENT:Catch(ply)
 		dmg:SetDamageForce(to:GetNormalized() * CATCH_FORCE)
 		ply:TakeDamageInfo(dmg)
 	end
+	self.FedUntil = CurTime() + Setting("sated_time")
 	return true
+end
+
+function ENT:Fed()
+	return CurTime() < self.FedUntil
+end
+
+local allAreas, allAreasCount
+local function AllAreas()
+	local n = navmesh.GetNavAreaCount()
+	if n ~= allAreasCount then allAreas, allAreasCount = navmesh.GetAllNavAreas(), n end
+	return allAreas
+end
+
+-- Anywhere on the map nobody's near or has line of sight to. On a map too open for that, the spot farthest
+-- from everyone it came across.
+function ENT:VanishSpot()
+	local areas = AllAreas()
+	if #areas == 0 then return end
+	local best, bestGap = nil, -1
+	for _ = 1, VANISH_BATCHES do
+		for _ = 1, SPOT_SAMPLES do
+			local area = areas[math.random(#areas)]
+			if not area:IsUnderwater() then
+				local spot = area:GetRandomPoint()
+				local gap = math.huge
+				for _, ply in ipairs(player.GetAll()) do
+					if ply:Alive() then gap = math.min(gap, spot:Distance(ply:GetPos())) end
+				end
+				if gap >= REST_NEAR and self:Unseen(spot, true) then return spot end
+				if gap > bestGap and not self:Watched(spot) then best, bestGap = spot, gap end
+			end
+		end
+		coroutine.yield()
+	end
+	return best
+end
+
+-- Whether anyone within resting distance has line of sight to it.
+function ENT:Exposed(pos)
+	for _, ply in ipairs(player.GetAll()) do
+		if ply:Alive() and ply:GetPos():DistToSqr(pos) < REST_NEAR * REST_NEAR and Sees(ply, pos, true) then return true end
+	end
+	return false
+end
+
+-- Walks off until whoever's looking at it can't see it any more.
+function ENT:Slink(watcher)
+	local spot = self:HideSpot(watcher:GetPos())
+	if not spot then return end
+	self:Pace(WALK_SPEED, WALK_ACCEL)
+	self.Path, self.RepathAt, self.Stranded = nil, 0, nil
+	local sneaky = self:Sneaky(watcher)
+	local giveUp = CurTime() + SLINK_TIME
+	while CurTime() < giveUp and self:Watched(self:GetPos()) do
+		if not self:Approach(spot, CurTime(), sneaky) then break end
+		coroutine.yield()
+	end
+	self.Path = nil
 end
 
 function ENT:SpawnSpot(origin, tries)
@@ -400,6 +465,7 @@ end
 local BRAIN = {}
 
 function BRAIN.idle(self)
+	if self:Fed() then return "rest" end
 	local last = self:GetTarget()
 	local since = CurTime()
 	self:SetTarget(NULL)
@@ -415,6 +481,8 @@ function BRAIN.idle(self)
 end
 
 function BRAIN.relocate(self)
+	local wait = CurTime() + VANISH_WAIT
+	while CurTime() < wait and self:Watched(self:GetPos()) do coroutine.wait(0.2) end
 	for tries = 0, math.huge do
 		local target = self:GetTarget()
 		if not Huntable(target) then return "idle" end
@@ -441,7 +509,7 @@ function BRAIN.stalk(self, from)
 		if self:SeenBy(target) then
 			return math.random() < Setting("chase_chance") and "chase" or "hide"
 		end
-		if self:Catch(target) then return "hide" end
+		if self:Catch(target) then return "rest" end
 		if now >= giveUp then return "relocate" end
 		if now >= lurk and self:Cornered(target, now) then
 			self.BaitedAt = self.CampSince
@@ -493,7 +561,7 @@ function BRAIN.chase(self)
 	while true do
 		local t, now = self:Tick()
 		if not t then return Done("idle") end
-		if self:Catch(t) then return Done("hide") end
+		if self:Catch(t) then return Done("rest") end
 		local close = breather and self:GetPos():DistToSqr(t:GetPos()) < BREATHER_RANGE * BREATHER_RANGE
 		local pace = close and math.min(BREATHER_SPEED, speed) or speed
 		self.loco:SetDesiredSpeed(pace)
@@ -553,6 +621,7 @@ function BRAIN.hide(self)
 		if not self:Approach(spot, now, sneaky) then break end
 	end
 
+	if self:Fed() then return "rest" end
 	if Huntable(self:GetTarget()) and math.random() < Setting("ambush_chance") then return "ambush" end
 	return "relocate"
 end
@@ -587,7 +656,7 @@ function BRAIN.lure(self)
 		local t, now = self:Tick()
 		if not t then return "idle" end
 		if self:SeenBy(t) or t:GetPos():DistToSqr(camp) > CAMP_RADIUS * CAMP_RADIUS then return "chase" end
-		if self:Catch(t) then return "hide" end
+		if self:Catch(t) then return "rest" end
 		if now - start > LURE_TIME then return "stalk" end
 		if spot and not waiting then
 			if self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
@@ -599,6 +668,24 @@ function BRAIN.lure(self)
 			self:Approach(Ground(t), now)
 		end
 	end
+end
+
+-- Fed. Lingers over the meal, then keeps out of everyone's sight until it's hungry again.
+function BRAIN.rest(self)
+	self:SetTarget(NULL)
+	self:SetEnraged(false)
+	local linger = CurTime() + LINGER
+	while self:Fed() do
+		local watcher = self:Watched(self:GetPos())
+		if watcher then
+			self:Slink(watcher)
+		elseif CurTime() >= linger and self:Exposed(self:GetPos()) then
+			local spot = self:VanishSpot()
+			if spot and not self:Watched(self:GetPos()) then self:SetPos(spot) end
+		end
+		coroutine.wait(REST_CHECK)
+	end
+	return "idle"
 end
 
 function BRAIN.ambush(self)

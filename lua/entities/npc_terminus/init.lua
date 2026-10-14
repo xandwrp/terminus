@@ -31,6 +31,7 @@ function ENT:Initialize()
 
 	self.Escapes = {}
 	self.TiredUntil = 0
+	self.FedUntil = 0
 	self.Light = 1
 
 	timer.Simple(0, function()

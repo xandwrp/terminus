@@ -1,6 +1,6 @@
 Terminus = Terminus or {}
 
-Terminus.STATES = { "idle", "relocate", "stalk", "chase", "hide", "ambush", "feint", "lure" }
+Terminus.STATES = { "idle", "relocate", "stalk", "chase", "hide", "ambush", "feint", "lure", "rest" }
 Terminus.STATE = {}
 for i, name in ipairs(Terminus.STATES) do Terminus.STATE[name] = i end
 
