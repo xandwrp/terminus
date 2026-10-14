@@ -8,6 +8,8 @@ local DARKEN = { 150, 205, 205 }
 local SPIT_DELAY = { 0.8, 1.6 }
 local SPIT_SPEED = { 120, 280 }
 local MAX_BONES = 60
+local GLUE_REACH = 24
+local GLUE_LOW = Vector(0, 0, 8)
 local HEAD = "ValveBiped.Bip01_Head1"
 local SKULL, RIB = "models/gibs/hgibs.mdl", "models/gibs/hgibs_rib.mdl"
 local SCAPULA, SPINE = "models/gibs/hgibs_scapula.mdl", "models/gibs/hgibs_spine.mdl"
@@ -190,15 +192,27 @@ function ENT:Finish(body)
 	body:Remove()
 end
 
+-- Keeps it over what it's eating, wherever that drifts or floats off to. Stands on the floor under it if
+-- there's one close, otherwise hangs there with it.
+function ENT:Glue(body)
+	local pos = body:GetPos()
+	local tr = util.TraceLine({ start = pos, endpos = pos - Vector(0, 0, GLUE_REACH), mask = MASK_PLAYERSOLID_BRUSHONLY })
+	self:SetPos(tr.Hit and tr.HitPos or pos - GLUE_LOW)
+	self.loco:SetVelocity(vector_origin)
+end
+
 -- Eats body one bite at a time. Runs in the behaviour coroutine.
 function ENT:Eat(body)
+	self.loco:SetGravity(0)
 	local courses = Courses(body)
 	local total = #courses
 	local gap = FEED_TIME / math.max(total, 1)
 	local nextBite = CurTime() + FIRST_BITE
 	local eaten = 0
 	while IsValid(body) do
+		self:Glue(body)
 		coroutine.yield()
+		if not IsValid(body) then return end
 		local now = CurTime()
 		if now >= nextBite then
 			local index = table.remove(courses, 1)

@@ -59,6 +59,7 @@ local FLY_CLOSE = 6
 local FLY_HOVER = Vector(0, 0, 24)
 local FLY_TIME = 30
 local LAND_REACH = 4000
+local FOOTING = 20
 local EXPOSED_COST, BEHIND_COST = 4, 0.5
 local EXPOSURE_MEMORY = 0.5
 local EXPOSURE_TRACES = 400
@@ -221,6 +222,18 @@ function ENT:Blink(spot)
 		coroutine.wait(STATIC_COVER)
 	end
 	self:SetPos(spot)
+end
+
+-- Back on its feet after flying, or eating something that floated off. Drops onto the nearest ground it can
+-- walk, under static if anyone's looking.
+function ENT:Settle()
+	local loco = self.loco
+	loco:SetGravity(self.BaseGravity)
+	loco:SetVelocity(vector_origin)
+	local pos = self:GetPos()
+	if util.TraceLine({ start = pos + STEP, endpos = pos - Vector(0, 0, FOOTING), mask = MASK_PLAYERSOLID_BRUSHONLY }).Hit then return end
+	local area = navmesh.GetNearestNavArea(pos, true, LAND_REACH)
+	if area then self:Blink(area:GetClosestPointOnArea(pos)) end
 end
 
 function ENT:PickTarget()
@@ -768,6 +781,7 @@ function BRAIN.feed(self)
 	self:SetTarget(NULL)
 	self:SetEnraged(false)
 	if IsValid(body) then self:Eat(body) end
+	self:Settle()
 	return "rest"
 end
 
@@ -818,13 +832,10 @@ function BRAIN.fly(self)
 	local start, last = CurTime(), CurTime()
 	local vel = Vector()
 
+	-- Stays up there for a meal, since that's eaten wherever the body ends up.
 	local function Land(nextState)
 		self:SetEnraged(false)
-		loco:SetGravity(self.BaseGravity)
-		loco:SetVelocity(vector_origin)
-		local pos = self:GetPos()
-		local area = navmesh.GetNearestNavArea(pos, true, LAND_REACH)
-		if area then self:Blink(area:GetClosestPointOnArea(pos)) end
+		if nextState ~= "feed" then self:Settle() end
 		return nextState
 	end
 
