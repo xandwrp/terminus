@@ -71,6 +71,11 @@ local LURK_SPOT = { 100, 400 }
 local LURK_WAIT = 25
 local LURE_TIME = 60
 local WAIST = Vector(0, 0, 36)
+local SNAP_ACCEL = 4000
+local RAGE_GRIP, TIRED_GRIP = 0.5, 0.5
+local DIRECT_RANGE, DIRECT_HEIGHT = 300, 48
+local DIRECT_LEAD = 0.35
+local STEER_TIGHT = 15
 local AROUND = {}
 for i = 0, 7 do
 	local a = i * math.pi / 4
@@ -189,6 +194,22 @@ end
 function ENT:Pace(speed, accel)
 	self.loco:SetDesiredSpeed(speed)
 	self.loco:SetAcceleration(accel)
+	self.loco:SetDeceleration(self.BaseDecel)
+end
+
+-- Heads straight for aim, ignoring the path. The tighter its grip, the less it drifts.
+function ENT:Steer(aim, speed, grip)
+	local loco = self.loco
+	loco:Approach(aim, 1)
+	loco:FaceTowards(aim)
+	if grip <= 0 then return end
+	local vel = loco:GetVelocity()
+	local want = aim - self:GetPos()
+	want.z = 0
+	want:Normalize()
+	want:Mul(speed)
+	want.z = vel.z
+	loco:SetVelocity(LerpVector(1 - math.exp(-engine.TickInterval() * STEER_TIGHT * grip), vel, want))
 end
 
 -- How much worse ground is to cross for being where ply can see it. Remembered for a moment, since a path
@@ -453,6 +474,8 @@ function BRAIN.chase(self)
 	end
 	self:Pace(speed, accel)
 	self:SetEnraged(enraged)
+	local gripFrom = enraged and RAGE_GRIP or 0
+	local gripMax = (not enraged and start < self.TiredUntil) and TIRED_GRIP or 1
 
 	local breather = not enraged and math.random() < BREATHER_CHANCE
 	local seen = start
@@ -472,11 +495,18 @@ function BRAIN.chase(self)
 		if not t then return Done("idle") end
 		if self:Catch(t) then return Done("hide") end
 		local close = breather and self:GetPos():DistToSqr(t:GetPos()) < BREATHER_RANGE * BREATHER_RANGE
-		self.loco:SetDesiredSpeed(close and math.min(BREATHER_SPEED, speed) or speed)
+		local pace = close and math.min(BREATHER_SPEED, speed) or speed
+		self.loco:SetDesiredSpeed(pace)
+		-- Locks on as the chase goes, so it stops drifting past and starts turning on a dime.
+		local grip = math.min(gripFrom + (now - start) / math.max(Setting("lock_on_time"), 0.1), gripMax)
+		local snap = Lerp(grip, accel, SNAP_ACCEL)
+		self.loco:SetAcceleration(snap)
+		self.loco:SetDeceleration(snap)
+		local spotted = self:Spots(t)
 		-- Knows where you are for the first stretch. After that it has to keep you in sight, and when it
 		-- loses you it heads where you were going.
 		local free = now - start > Setting("chase_time")
-		if not free or self:Spots(t) then
+		if not free or spotted then
 			seen, lastPos, lastVel, guess = now, Ground(t), t:GetVelocity(), nil
 		end
 		local goal
@@ -489,7 +519,14 @@ function BRAIN.chase(self)
 				return Done("relocate", true)
 			end
 		end
-		if not self:Approach(goal, now) and free then return Done("relocate", true) end
+		local to = t:GetPos() - self:GetPos()
+		if spotted and to:Length2DSqr() < DIRECT_RANGE * DIRECT_RANGE and math.abs(to.z) < DIRECT_HEIGHT then
+			local vel = t:GetVelocity()
+			self:Steer(t:GetPos() + Vector(vel.x, vel.y, 0) * (DIRECT_LEAD * grip), pace, grip)
+			self.Stranded = nil
+		elseif not self:Approach(goal, now) and free then
+			return Done("relocate", true)
+		end
 	end
 end
 
@@ -581,6 +618,7 @@ function ENT:RunBehaviour()
 	local state = "idle"
 	while true do
 		local from = self:StateName()
+		if developer:GetBool() then print(self, from, "->", state) end
 		self:SetState(STATE[state])
 		self.Path = nil
 		self.RepathAt = 0

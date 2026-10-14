@@ -27,6 +27,7 @@ function ENT:Initialize()
 
 	self.loco:SetDeathDropHeight(4000)
 	self.loco:SetJumpHeight(120)
+	self.BaseDecel = self.loco:GetDeceleration()
 
 	self.Escapes = {}
 	self.TiredUntil = 0

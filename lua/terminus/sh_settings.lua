@@ -21,6 +21,8 @@ Terminus.SETTINGS = {
 		help = "Chases a player gets away from before the next one is enraged" },
 	{ name = "tired_time", default = 60, min = 0, max = 600, decimals = 0, label = "Tired time",
 		help = "Seconds its chases stay slow after a rage. At 0 it never tires" },
+	{ name = "lock_on_time", default = 12, min = 0, max = 60, decimals = 0, label = "Lock-on time",
+		help = "Seconds into a chase before it stops drifting and turns on a dime" },
 	{ name = "stalk_speed", default = 300, min = 50, max = 3000, decimals = 0, label = "Stalk speed",
 		help = "Top speed while stalking" },
 	{ name = "chase_speed", default = 1000, min = 50, max = 3000, decimals = 0, label = "Chase speed",
