@@ -92,13 +92,14 @@ for i = 0, 7 do
 	AROUND[#AROUND + 1] = Vector(math.cos(a), math.sin(a), 0) * ENCLOSED_REACH
 end
 
-local function Huntable(ent)
+-- Whether it can go after ent. Noclipping keeps a fresh hunt off you, but won't get you out of one.
+local function Huntable(ent, fresh)
 	if not IsValid(ent) or ent:IsFlagSet(FL_NOTARGET) or ent.TerminusMeal then return false end
 	if ent:IsPlayer() then
 		return Setting("hunt_players") ~= 0 and ent:Alive()
 			and not ai_ignoreplayers:GetBool()
 			and not ent:HasGodMode()
-			and ent:GetMoveType() ~= MOVETYPE_NOCLIP
+			and not (fresh and ent:GetMoveType() == MOVETYPE_NOCLIP)
 			and ent:GetObserverMode() == OBS_MODE_NONE
 	end
 	if ent:IsNPC() then
@@ -225,7 +226,7 @@ function ENT:PickTarget()
 	local function Least(list)
 		local picks, fewest = {}, math.huge
 		for _, ent in ipairs(list) do
-			if Huntable(ent) then
+			if Huntable(ent, true) then
 				local n = hunted[ent] or 0
 				if n < fewest then
 					picks, fewest = { ent }, n
