@@ -1,0 +1,14 @@
+{
+	"title": "Terminus Reborn",
+	"type": "npc",
+	"tags": [ "fun", "scenic" ],
+	"ignore": [
+		"*.md",
+		"*.blend",
+		"*.blend1",
+		".git*",
+		"tools/*",
+		"renders/*",
+		"workshop/*"
+	]
+}
