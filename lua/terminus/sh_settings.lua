@@ -3,6 +3,8 @@ Terminus = Terminus or {}
 Terminus.SETTINGS = {
 	{ name = "kill_players", default = 1, min = 0, max = 1, label = "Kills players",
 		help = "Catching a player kills them. At 0 it just walks off" },
+	{ name = "dark_hides", default = 1, min = 0, max = 1, label = "Hides in the dark",
+		help = "It can't be spotted in the dark unless it's close or in your flashlight" },
 	{ name = "lurk_time", default = 15, min = 0, max = 120, decimals = 0, label = "Lurk time",
 		help = "Seconds it stands still after showing up before it creeps in" },
 	{ name = "stalk_time", default = 120, min = 10, max = 600, decimals = 0, label = "Stalk time",

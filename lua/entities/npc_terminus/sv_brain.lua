@@ -46,6 +46,10 @@ local SIGHT_FAR = 3000
 local FLANK, FLANK_RANGE = 300, 700
 local HOLD_AHEAD = 120
 local HOLD_MAX = 8
+local DARK = 0.3
+local DARK_CLOSE = 300
+local FLASHLIGHT_RANGE = 1000
+local FLASHLIGHT_COS = math.cos(math.rad(30))
 local GROUND = Vector(0, 0, 16384)
 
 local function Huntable(ply)
@@ -80,6 +84,19 @@ local function Sees(ply, pos, anyway)
 	local vehicle = ply:GetVehicle()
 	local filter = IsValid(vehicle) and { ply, vehicle } or ply
 	return Clear(eye, center, filter) or Clear(eye, pos + SIGHT_TOP, filter)
+end
+
+-- Sees, plus the dark: ply has to have light on it, be close, or have it in their flashlight. Its target's
+-- client says how lit it is.
+function ENT:SeenBy(ply, pos)
+	pos = pos or self:GetPos()
+	if not Sees(ply, pos) then return false end
+	if Setting("dark_hides") == 0 or self:GetEnraged() then return true end
+	if self.LightFrom ~= ply or self.Light >= DARK then return true end
+	local to = pos + EYE - ply:EyePos()
+	local dist = to:Length()
+	if dist < DARK_CLOSE then return true end
+	return ply:FlashlightIsOn() and dist < FLASHLIGHT_RANGE and ply:GetAimVector():Dot(to) > dist * FLASHLIGHT_COS
 end
 
 local function Ground(ply)
@@ -313,7 +330,7 @@ function BRAIN.stalk(self, from)
 	while true do
 		local target, now = self:Tick()
 		if not target then return "idle" end
-		if Sees(target, self:GetPos()) then
+		if self:SeenBy(target) then
 			return math.random() < Setting("chase_chance") and "chase" or "hide"
 		end
 		if self:Catch(target) then return "hide" end
@@ -321,7 +338,7 @@ function BRAIN.stalk(self, from)
 		if now >= lurk then
 			-- Waits at the corner while the next stretch is in view, and goes when they look away.
 			local ahead = self:PathAhead(HOLD_AHEAD)
-			if ahead and Sees(target, ahead) then held = held or now else held = nil end
+			if ahead and self:SeenBy(target, ahead) then held = held or now else held = nil end
 			if not held or now - held >= HOLD_MAX then
 				local close = self:GetPos():DistToSqr(target:GetPos()) < FLANK_RANGE * FLANK_RANGE
 				if not self:Approach(close and Ground(target) or Behind(target), now, sneaky) then return "relocate" end
@@ -386,7 +403,7 @@ function BRAIN.hide(self)
 		local now = CurTime()
 		target = self:GetTarget()
 		if Huntable(target) then
-			if Sees(target, self:GetPos()) then seen = now end
+			if self:SeenBy(target) then seen = now end
 			self:Catch(target)
 		end
 		if now - start > HIDE_TIME or now - seen > HIDE_UNSEEN or self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then
@@ -404,7 +421,7 @@ function BRAIN.ambush(self)
 	while true do
 		local target, now = self:Tick()
 		if not target then return "idle" end
-		if Sees(target, self:GetPos()) then return "chase" end
+		if self:SeenBy(target) then return "chase" end
 		if self:GetPos():DistToSqr(target:GetPos()) < AMBUSH_RANGE * AMBUSH_RANGE and self:Spots(target) then
 			return "chase"
 		end

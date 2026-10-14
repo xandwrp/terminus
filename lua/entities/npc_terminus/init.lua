@@ -7,6 +7,16 @@ local ai_disabled = GetConVar("ai_disabled")
 
 local RESTART_DELAY = 1
 
+util.AddNetworkString("TerminusLight")
+
+net.Receive("TerminusLight", function(_, ply)
+	local ent = net.ReadEntity()
+	local light = net.ReadUInt(8) / 255
+	if not IsValid(ent) or ent:GetClass() ~= "npc_terminus" or ent:GetTarget() ~= ply then return end
+	ent.Light = light
+	ent.LightFrom = ply
+end)
+
 function ENT:Initialize()
 	self:SetModel("models/terminus.mdl")
 	self:SetSpawnEffect(false)
@@ -20,6 +30,7 @@ function ENT:Initialize()
 
 	self.Escapes = {}
 	self.TiredUntil = 0
+	self.Light = 1
 
 	timer.Simple(0, function()
 		if not IsValid(self) or navmesh.GetNavAreaCount() > 0 then return end
