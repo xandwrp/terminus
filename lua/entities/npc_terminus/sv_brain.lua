@@ -44,6 +44,9 @@ local SPAWN_CLOSER_TRIES = 20
 local SPOT_SAMPLES = 16
 local CLIMB, DROP = 120, 4000
 local IDLE_FORGET = 3
+local IDLE_CHECK = 0.2
+local IDLE_PICK = 1
+local IDLE_STARE = 1
 local STATIC_COVER = 0.25
 local EXPOSED_COST, BEHIND_COST = 4, 0.5
 local EXPOSURE_MEMORY = 0.5
@@ -504,19 +507,34 @@ end
 
 local BRAIN = {}
 
+-- Nobody to hunt. Won't be looked at, though: catch it standing around and it's gone in a burst of static.
 function BRAIN.idle(self)
 	if self:Fed() then return "rest" end
 	local last = self:GetTarget()
 	local since = CurTime()
 	self:SetTarget(NULL)
+	local pickAt, stared = 0, nil
 	while true do
-		local target = self:PickTarget()
-		if target then
-			self:SetTarget(target)
-			local resume = self.Placed and target == last and CurTime() - since < IDLE_FORGET
-			return resume and "stalk" or "relocate"
+		local now = CurTime()
+		if now >= pickAt then
+			local target = self:PickTarget()
+			if target then
+				self:SetTarget(target)
+				local resume = self.Placed and target == last and now - since < IDLE_FORGET
+				return resume and "stalk" or "relocate"
+			end
+			pickAt = now + IDLE_PICK
 		end
-		coroutine.wait(1)
+		if not self:Watched(self:GetPos()) then
+			stared = nil
+		elseif not stared then
+			stared = now
+		elseif now - stared >= IDLE_STARE then
+			local spot = self:VanishSpot()
+			if spot then self:Blink(spot) end
+			stared = nil
+		end
+		coroutine.wait(IDLE_CHECK)
 	end
 end
 
