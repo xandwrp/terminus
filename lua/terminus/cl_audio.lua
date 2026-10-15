@@ -9,6 +9,8 @@ local CHASE_LEVEL = 75
 local CHASE_FADE = 0.5
 local CHASE_MUSIC = "terminus/chasing_ambience.wav"
 local RAGE_MUSIC = "terminus/enraged.wav"
+-- The rage track is mastered far louder than the chase one. This keeps it just above it.
+local RAGE_VOLUME = 0.45
 local MUSIC_FADE = 2
 local STING = "terminus/stalk_end.wav"
 local AMBIENCE = {
@@ -132,7 +134,7 @@ hook.Add("Think", "TerminusAudio", function()
 	end
 	local volume = Setting("music")
 	music.chase:Hold(chased, volume, now)
-	music.rage:Hold(enraged, volume, now)
+	music.rage:Hold(enraged, volume * RAGE_VOLUME, now)
 
 	if stalked and Setting("stalk_ambience") ~= 0 then
 		if now >= nextAmbience then
