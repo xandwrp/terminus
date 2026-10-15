@@ -91,8 +91,8 @@ local nextAmbience = 0
 local nextBeat = 0
 
 hook.Add("Think", "TerminusAudio", function()
-	local me = LocalPlayer()
-	if not IsValid(me) then return end
+	local me, eyes = LocalPlayer(), Terminus.Viewer()
+	if not eyes then return end
 	local now = CurTime()
 	local chased, enraged, stalked = false, false, false
 	local near = 0
@@ -105,11 +105,11 @@ hook.Add("Think", "TerminusAudio", function()
 		-- Walking off as bait, it fades out on purpose so it sounds like it's really going.
 		local fade = state == STATE.feint and math.max(0, 1 - (now - v.since) / FEINT_FADE) or 1
 		Creep(v, CREEPING[state] and fade > 0, fade, now)
-		if ent:GetTarget() == me then
+		if ent:GetTarget() == eyes then
 			chased = chased or CHASING[state]
 			enraged = enraged or (CHASING[state] and ent:GetEnraged())
 			stalked = stalked or state == STATE.stalk
-			if HEARTBEAT[state] then near = math.max(near, (1 - ent:GetPos():Distance(me:GetPos()) / HEART_RANGE) * fade) end
+			if HEARTBEAT[state] then near = math.max(near, (1 - ent:GetPos():Distance(eyes:GetPos()) / HEART_RANGE) * fade) end
 			if Terminus.Jolted(v.state, state) then me:EmitSound(STING, 0, 100, 1, CHAN_STATIC) end
 		end
 		v.state = state
@@ -143,7 +143,7 @@ hook.Add("Think", "TerminusAudio", function()
 		nextAmbience = 0
 	end
 
-	if near > 0 and me:Alive() and Setting("stalk_ambience") ~= 0 and now >= nextBeat then
+	if near > 0 and eyes:Alive() and Setting("stalk_ambience") ~= 0 and now >= nextBeat then
 		local pitch = Lerp(near, HEART_PITCH[1], HEART_PITCH[2])
 		me:EmitSound(HEART, 0, pitch, Lerp(near, HEART_VOLUME[1], HEART_VOLUME[2]), CHAN_STATIC)
 		nextBeat = now + Length(HEART) * 100 / pitch

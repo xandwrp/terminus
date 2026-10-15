@@ -18,8 +18,8 @@ local mod = {
 }
 
 hook.Add("RenderScreenspaceEffects", "TerminusDread", function()
-	local me = LocalPlayer()
-	if not IsValid(me) then return end
+	local me = Terminus.Viewer()
+	if not me then return end
 
 	local goal, angry = 0, 0
 	if Setting("dread") ~= 0 and me:Alive() then

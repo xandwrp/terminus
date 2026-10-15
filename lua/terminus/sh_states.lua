@@ -21,3 +21,17 @@ function Terminus.Jolted(from, to)
 end
 
 Terminus.CHASING = { [Terminus.STATE.chase] = true, [Terminus.STATE.fly] = true }
+
+if CLIENT then
+	-- Whose eyes you're looking through: your own, or whoever you're spectating.
+	function Terminus.Viewer()
+		local me = LocalPlayer()
+		if not IsValid(me) then return end
+		local mode = me:GetObserverMode()
+		if mode == OBS_MODE_IN_EYE or mode == OBS_MODE_CHASE then
+			local them = me:GetObserverTarget()
+			if IsValid(them) and them:IsPlayer() then return them end
+		end
+		return me
+	end
+end
