@@ -125,6 +125,11 @@ local function Huntable(ent, fresh)
 	return ent:Health() > 0 or ent:IsNextBot() and ent:GetMaxHealth() <= 0
 end
 
+-- Whether ply is in the world looking around, not dead or spectating.
+local function Looking(ply)
+	return ply:Alive() and ply:GetObserverMode() == OBS_MODE_NONE
+end
+
 local function Facing(ent)
 	return ent:IsPlayer() and ent:GetAimVector() or ent:EyeAngles():Forward()
 end
@@ -202,17 +207,22 @@ end
 -- Whoever can see it at pos, if anyone.
 function ENT:Watched(pos, anyway)
 	for _, ply in ipairs(player.GetAll()) do
-		if ply:Alive() and Sees(ply, pos, anyway) then return ply end
+		if Looking(ply) and Sees(ply, pos, anyway) then return ply end
 	end
 end
 
--- Jumps to spot. Anyone who'd see it go or turn up, or is spectating it, gets a burst of static to cover
--- the jump.
+-- Jumps to spot. Anyone who'd see it go or turn up, or is spectating it or one of them, gets a burst of
+-- static to cover the jump.
 function ENT:Blink(spot)
 	local from = self:GetPos()
+	local saw = {}
+	for _, ply in ipairs(player.GetAll()) do
+		if Looking(ply) and (Sees(ply, from) or Sees(ply, spot)) then saw[ply] = true end
+	end
 	local watchers = {}
 	for _, ply in ipairs(player.GetAll()) do
-		if ply:GetObserverTarget() == self or ply:Alive() and (Sees(ply, from) or Sees(ply, spot)) then
+		local through = ply:GetObserverTarget()
+		if saw[ply] or through == self or IsValid(through) and saw[through] then
 			watchers[#watchers + 1] = ply
 		end
 	end
@@ -428,7 +438,7 @@ function ENT:VanishSpot()
 				local spot = area:GetRandomPoint()
 				local gap = math.huge
 				for _, ply in ipairs(player.GetAll()) do
-					if ply:Alive() then gap = math.min(gap, spot:Distance(ply:GetPos())) end
+					if Looking(ply) then gap = math.min(gap, spot:Distance(ply:GetPos())) end
 				end
 				if gap >= REST_NEAR and self:Unseen(spot, true) then return spot end
 				if gap > bestGap and not self:Watched(spot) then best, bestGap = spot, gap end
@@ -442,7 +452,7 @@ end
 -- Whether anyone within resting distance has line of sight to it.
 function ENT:Exposed(pos)
 	for _, ply in ipairs(player.GetAll()) do
-		if ply:Alive() and ply:GetPos():DistToSqr(pos) < REST_NEAR * REST_NEAR and Sees(ply, pos, true) then return true end
+		if Looking(ply) and ply:GetPos():DistToSqr(pos) < REST_NEAR * REST_NEAR and Sees(ply, pos, true) then return true end
 	end
 	return false
 end
@@ -479,7 +489,7 @@ end
 
 function ENT:Unseen(spot, hidden)
 	for _, ply in ipairs(player.GetAll()) do
-		if ply:Alive() and (spot:DistToSqr(ply:GetPos()) < SPAWN_CROWD * SPAWN_CROWD or Sees(ply, spot, hidden)) then
+		if Looking(ply) and (spot:DistToSqr(ply:GetPos()) < SPAWN_CROWD * SPAWN_CROWD or Sees(ply, spot, hidden)) then
 			return false
 		end
 	end
@@ -522,7 +532,7 @@ end
 local function Alone(ply)
 	local pos = ply:GetPos()
 	for _, other in ipairs(player.GetAll()) do
-		if other ~= ply and other:Alive() and other:GetPos():DistToSqr(pos) < ALONE_RANGE * ALONE_RANGE then return false end
+		if other ~= ply and Looking(other) and other:GetPos():DistToSqr(pos) < ALONE_RANGE * ALONE_RANGE then return false end
 	end
 	return true
 end
