@@ -258,9 +258,11 @@ function ENT:Settle()
 	if area then self:Blink(area:GetClosestPointOnArea(pos)) end
 end
 
-function ENT:PickTarget()
+-- Who to go after. Sticks with whoever it's after unless told to pick again, and then it's anyone's turn,
+-- them included.
+function ENT:PickTarget(again)
 	local current = self:GetTarget()
-	if Huntable(current) then return current end
+	if not again and Huntable(current) then return current end
 
 	local hunted = {}
 	for _, bot in ipairs(ents.FindByClass(self:GetClass())) do
@@ -602,7 +604,9 @@ function BRAIN.idle(self)
 	end
 end
 
-function BRAIN.relocate(self)
+-- Shows up somewhere else. Done with whoever it was after, it might show up for someone else this time.
+function BRAIN.relocate(self, from)
+	if from ~= "idle" then self:SetTarget(self:PickTarget(true) or self:GetTarget()) end
 	local wait = CurTime() + VANISH_WAIT
 	while CurTime() < wait and self:Watched(self:GetPos()) do coroutine.wait(0.2) end
 	for tries = 0, math.huge do
