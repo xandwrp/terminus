@@ -39,6 +39,7 @@ Presence
 - Color drains out while it's after you. Goes red when it's enraged
 - Static covers your screen whenever it teleports where you can see
 - Catch it standing around with nothing to do and it's gone in a burst of static
+- Can be set to vanish the moment anyone sees it, unless it's coming for you
 
 Sound
 - Sounds moved into their own folder, so they stop fighting other nextbots over the same file names
@@ -53,7 +54,7 @@ Multiplayer
 
 Settings
 - Utilities > Terminus in the spawn menu. Server settings are superadmin only
-- Server: who it hunts, whether it kills players, hiding in the dark, how long it stays fed, lurks, stalks, chases, waits in ambush and stays tired, chase and ambush chances, escapes before rage, how long you can hang out of reach, lock-on time, stalk, chase and rage speeds
+- Server: who it hunts, whether it kills players, hiding in the dark, vanishing when seen, how long it stays fed, lurks, stalks, chases, waits in ambush and stays tired, chase and ambush chances, escapes before rage, how long you can hang out of reach, lock-on time, stalk, chase and rage speeds
 - Client: music volume, stalk ambience, screen effects
 
 Other

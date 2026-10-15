@@ -223,6 +223,11 @@ function ENT:Watched(pos, anyway)
 	end
 end
 
+-- Whether it's set to vanish the moment anyone sees it, and someone does.
+function ENT:Vanishing()
+	return Setting("vanish_seen") ~= 0 and self:Watched(self:GetPos()) ~= nil
+end
+
 -- Jumps to spot. Anyone who'd see it go or turn up, or is spectating it or one of them, gets a burst of
 -- static to cover the jump.
 function ENT:Blink(spot)
@@ -593,12 +598,13 @@ function BRAIN.idle(self)
 		end
 		if not self:Watched(self:GetPos()) then
 			stared = nil
-		elseif not stared then
-			stared = now
-		elseif now - stared >= IDLE_STARE then
-			local spot = self:VanishSpot()
-			if spot then self:Blink(spot) end
-			stared = nil
+		else
+			stared = stared or now
+			if now - stared >= (Setting("vanish_seen") ~= 0 and 0 or IDLE_STARE) then
+				local spot = self:VanishSpot()
+				if spot then self:Blink(spot) end
+				stared = nil
+			end
 		end
 		coroutine.wait(IDLE_CHECK)
 	end
@@ -607,7 +613,7 @@ end
 -- Shows up somewhere else. Done with whoever it was after, it might show up for someone else this time.
 function BRAIN.relocate(self, from)
 	if from ~= "idle" then self:SetTarget(self:PickTarget(true) or self:GetTarget()) end
-	local wait = CurTime() + VANISH_WAIT
+	local wait = Setting("vanish_seen") ~= 0 and 0 or CurTime() + VANISH_WAIT
 	while CurTime() < wait and self:Watched(self:GetPos()) do coroutine.wait(0.2) end
 	for tries = 0, math.huge do
 		local target = self:GetTarget()
@@ -632,9 +638,10 @@ function BRAIN.stalk(self, from)
 	while true do
 		local target, now = self:Tick()
 		if not target then return "idle" end
-		if self:Spotter(target) then
-			return math.random() < Setting("chase_chance") and "chase" or "hide"
-		end
+		local spotter = self:Spotter(target)
+		if spotter and math.random() < Setting("chase_chance") then return "chase" end
+		if self:Vanishing() then return "relocate" end
+		if spotter then return "hide" end
 		if self:Catch(target) then return "feed" end
 		if self:Taunted(target, now) then return "fly" end
 		if now >= giveUp then return "relocate" end
@@ -766,6 +773,7 @@ function BRAIN.feint(self)
 	while true do
 		local t, now = self:Tick()
 		if not t then return "idle" end
+		if self:Vanishing() then return "relocate" end
 		if now - start > FEINT_TIME or self:GetPos():DistToSqr(spot) < HIDE_REACHED * HIDE_REACHED then return "lure" end
 		if not self:Approach(spot, now, sneaky) then return "lure" end
 	end
@@ -785,6 +793,7 @@ function BRAIN.lure(self)
 		local t, now = self:Tick()
 		if not t then return "idle" end
 		if self:Spotter(t) or t:GetPos():DistToSqr(camp) > CAMP_RADIUS * CAMP_RADIUS then return "chase" end
+		if self:Vanishing() then return "relocate" end
 		if self:Catch(t) then return "feed" end
 		if self:Taunted(t, now) then return "fly" end
 		if now - start > LURE_TIME then return "stalk" end
@@ -818,7 +827,10 @@ function BRAIN.rest(self)
 	local linger = CurTime() + LINGER
 	while self:Fed() do
 		local watcher = self:Watched(self:GetPos())
-		if watcher then
+		if watcher and Setting("vanish_seen") ~= 0 then
+			local spot = self:VanishSpot()
+			if spot then self:Blink(spot) end
+		elseif watcher then
 			self:Slink(watcher)
 		elseif CurTime() >= linger and self:Exposed(self:GetPos()) then
 			local spot = self:VanishSpot()
@@ -835,6 +847,7 @@ function BRAIN.ambush(self)
 		local target, now = self:Tick()
 		if not target then return "idle" end
 		if self:Spotter(target) then return "chase" end
+		if self:Vanishing() then return "relocate" end
 		if self:Taunted(target, now) then return "fly" end
 		if self:GetPos():DistToSqr(target:GetPos()) < AMBUSH_RANGE * AMBUSH_RANGE and self:Spots(target) then
 			return "chase"

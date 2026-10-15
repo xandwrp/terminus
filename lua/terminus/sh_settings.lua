@@ -11,6 +11,8 @@ Terminus.SETTINGS = {
 		help = "Catching a player kills and eats them. At 0 it just walks off" },
 	{ name = "dark_hides", default = 1, min = 0, max = 1, label = "Hides in the dark",
 		help = "It can't be spotted in the dark unless it's close or in your flashlight" },
+	{ name = "vanish_seen", default = 0, min = 0, max = 1, label = "Vanishes when seen",
+		help = "Anyone sees it and it's gone, unless it's coming for you" },
 	{ name = "sated_time", default = 90, min = 0, max = 600, decimals = 0, label = "Sated time",
 		help = "Seconds a kill keeps it fed. Until then it keeps out of everyone's sight" },
 	{ name = "lurk_time", default = 15, min = 0, max = 120, decimals = 0, label = "Lurk time",
