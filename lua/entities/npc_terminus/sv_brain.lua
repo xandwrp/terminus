@@ -161,16 +161,28 @@ local function Sees(ply, pos, anyway)
 end
 
 -- Sees, plus the dark: ply has to have light on it, be close, or have it in their flashlight. Its target's
--- client says how lit it is.
+-- client says how lit it is, which goes for anyone looking.
 function ENT:SeenBy(ply, pos)
 	pos = pos or self:GetPos()
 	if not Sees(ply, pos) then return false end
 	if Setting("dark_hides") == 0 or self:GetEnraged() then return true end
-	if self.LightFrom ~= ply or self.Light >= DARK then return true end
+	if self.LightFrom ~= self:GetTarget() or self.Light >= DARK then return true end
 	local to = pos + EYE - ply:EyePos()
 	local dist = to:Length()
 	if dist < DARK_CLOSE then return true end
 	return ply:IsPlayer() and ply:FlashlightIsOn() and dist < FLASHLIGHT_RANGE and Facing(ply):Dot(to) > dist * FLASHLIGHT_COS
+end
+
+-- Whoever just spotted it: its target, or anyone else it could go after for it. Whoever it is becomes the
+-- target, so it turns on them.
+function ENT:Spotter(target)
+	if self:SeenBy(target) then return target end
+	for _, ply in ipairs(player.GetAll()) do
+		if ply ~= target and Huntable(ply, true) and self:SeenBy(ply) then
+			self:SetTarget(ply)
+			return ply
+		end
+	end
 end
 
 local function Ground(ply)
@@ -616,7 +628,7 @@ function BRAIN.stalk(self, from)
 	while true do
 		local target, now = self:Tick()
 		if not target then return "idle" end
-		if self:SeenBy(target) then
+		if self:Spotter(target) then
 			return math.random() < Setting("chase_chance") and "chase" or "hide"
 		end
 		if self:Catch(target) then return "feed" end
@@ -768,7 +780,7 @@ function BRAIN.lure(self)
 	while true do
 		local t, now = self:Tick()
 		if not t then return "idle" end
-		if self:SeenBy(t) or t:GetPos():DistToSqr(camp) > CAMP_RADIUS * CAMP_RADIUS then return "chase" end
+		if self:Spotter(t) or t:GetPos():DistToSqr(camp) > CAMP_RADIUS * CAMP_RADIUS then return "chase" end
 		if self:Catch(t) then return "feed" end
 		if self:Taunted(t, now) then return "fly" end
 		if now - start > LURE_TIME then return "stalk" end
@@ -818,7 +830,7 @@ function BRAIN.ambush(self)
 	while true do
 		local target, now = self:Tick()
 		if not target then return "idle" end
-		if self:SeenBy(target) then return "chase" end
+		if self:Spotter(target) then return "chase" end
 		if self:Taunted(target, now) then return "fly" end
 		if self:GetPos():DistToSqr(target:GetPos()) < AMBUSH_RANGE * AMBUSH_RANGE and self:Spots(target) then
 			return "chase"
