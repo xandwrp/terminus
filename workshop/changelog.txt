@@ -1,0 +1,63 @@
+Terminus Reborn
+
+Rebuilt from the ground up. Same face, new brain.
+
+Hunting
+- Hunts everyone on the server, not just the host
+- More than one of it spread out, each going after whoever's least hunted
+- Picks someone new each time it moves on, so one person doesn't get all of it
+- Turns on whoever spots it, not just whoever it's after
+- Hunts NPCs and nextbots too, VJ Base and DrGBase included
+- Noclip keeps it from starting a hunt on you, but won't get you out of one
+- Hang out of reach too long, up high or in the water, and it flies after you
+
+Stalking
+- Sneaks around what you can see and comes at your back
+- Waits at the corner while the next stretch is in view, goes when you look away
+- Hides in the dark. Can't be spotted there unless it's close or in your flashlight
+- Hole up somewhere tight on your own and it fakes walking off to bait you out, then waits just out of sight
+- The fake walk-off fades out so it sounds like it's really leaving
+- You hear it when it turns up somewhere
+
+Chasing
+- Cuts you off instead of running at where you were
+- Loses sight of you and it heads where you were going
+- Locks on harder the longer a chase goes, stops drifting past and turns on a dime
+- Still enrages after enough escapes, still gets tired after
+
+Eating
+- Catching something kills it and eats it. Bite by bite, limbs first
+- Spits out what's left
+- You watch from the body, then from it
+- Stays on the body while eating, even if it floats off
+- Keeps out of everyone's sight until it's hungry again
+
+Presence
+- Lit by the map instead of glowing in the dark, and by your flashlight
+- Heartbeat when it's near, faster the closer it gets
+- A jolt when you spot it
+- Color drains out while it's after you. Goes red when it's enraged
+- Static covers your screen whenever it teleports where you can see
+- Catch it standing around with nothing to do and it's gone in a burst of static
+
+Sound
+- Sounds moved into their own folder, so they stop fighting other nextbots over the same file names
+- Music and ambience play for whoever it's after, not just the host
+- Chase music keeps going for the whole chase
+- Rage music turned way down. Sorry about your ears
+
+Multiplayer
+- Spectators get the music, heartbeat and screen effects of whoever they're watching
+- Spectating doesn't count as looking at it
+- Static shows for anyone spectating someone who saw it teleport
+
+Settings
+- Utilities > Terminus in the spawn menu. Server settings are superadmin only
+- Server: who it hunts, whether it kills players, hiding in the dark, how long it stays fed, lurks, stalks, chases, waits in ambush and stays tired, chase and ambush chances, escapes before rage, how long you can hang out of reach, lock-on time, stalk, chase and rage speeds
+- Client: music volume, stalk ambience, screen effects
+
+Other
+- Has its own spawn category
+- Tells you when the map has no navmesh instead of just standing there
+- Gets back up on its own if its brain errors instead of freezing for good
+- No more console spam
