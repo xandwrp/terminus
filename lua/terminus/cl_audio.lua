@@ -90,7 +90,6 @@ end
 
 local music
 local nextAmbience = 0
-local nextBeat = 0
 
 hook.Add("Think", "TerminusAudio", function()
 	local me, eyes = LocalPlayer(), Terminus.Viewer()
@@ -130,7 +129,9 @@ hook.Add("Think", "TerminusAudio", function()
 			owner = me,
 			chase = NewLoop(me, CHASE_MUSIC, 0, MUSIC_FADE),
 			rage = NewLoop(me, RAGE_MUSIC, 0, MUSIC_FADE),
+			heart = CreateSound(me, HEART),
 		}
+		music.heart:SetSoundLevel(0)
 	end
 	local volume = Setting("music")
 	music.chase:Hold(chased, volume, now)
@@ -145,9 +146,16 @@ hook.Add("Think", "TerminusAudio", function()
 		nextAmbience = 0
 	end
 
-	if near > 0 and eyes:Alive() and Setting("stalk_ambience") ~= 0 and now >= nextBeat then
-		local pitch = Lerp(near, HEART_PITCH[1], HEART_PITCH[2])
-		me:EmitSound(HEART, 0, pitch, Lerp(near, HEART_VOLUME[1], HEART_VOLUME[2]), CHAN_STATIC)
-		nextBeat = now + Length(HEART) * 100 / pitch
+	local heart = music.heart
+	if near > 0 and eyes:Alive() and Setting("stalk_ambience") ~= 0 then
+		local pitch, loud = Lerp(near, HEART_PITCH[1], HEART_PITCH[2]), Lerp(near, HEART_VOLUME[1], HEART_VOLUME[2])
+		if heart:IsPlaying() then
+			heart:ChangePitch(pitch, 0.1)
+			heart:ChangeVolume(loud, 0.1)
+		else
+			heart:PlayEx(loud, pitch)
+		end
+	elseif heart:IsPlaying() then
+		heart:Stop()
 	end
 end)
