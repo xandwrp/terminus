@@ -517,11 +517,12 @@ end
 
 function ENT:HideSpot(from, reach)
 	local areas = navmesh.Find(self:GetPos(), reach or HIDE_RANGE, DROP, CLIMB)
-	local best, farthest = nil, 0
+	local best, farthest, hidden = nil, 0, false
 	for _ = 1, math.min(#areas, SPOT_SAMPLES) do
 		local spot = areas[math.random(#areas)]:GetRandomPoint()
 		local d = spot:DistToSqr(from)
-		if d > farthest then best, farthest = spot, d end
+		local unseen = not self:Watched(spot, true)
+		if unseen and not hidden or unseen == hidden and d > farthest then best, farthest, hidden = spot, d, unseen end
 	end
 	return best
 end
